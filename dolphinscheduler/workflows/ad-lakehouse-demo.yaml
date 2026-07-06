@@ -1,0 +1,29 @@
+project: ustc-streaming-lakehouse-demo
+workflow: ad_lakehouse_daily_refresh
+description: >
+  Linux task blueprint for the thesis lakehouse stack. The scripts are suitable
+  for a Linux host or a DolphinScheduler worker with Docker CLI access.
+tasks:
+  - name: init_flink_ddl
+    type: SHELL
+    command: bash ./scripts/linux/init-flink-ddl.sh
+  - name: submit_streaming_jobs
+    type: SHELL
+    command: bash ./scripts/linux/submit-streaming-jobs.sh
+    depends_on:
+      - init_flink_ddl
+  - name: run_ads_batches
+    type: SHELL
+    command: bash ./scripts/linux/run-ads-batches.sh
+    depends_on:
+      - submit_streaming_jobs
+  - name: sync_starrocks_olap
+    type: SHELL
+    command: bash ./scripts/linux/sync-starrocks.sh
+    depends_on:
+      - run_ads_batches
+  - name: verify_stack
+    type: SHELL
+    command: bash ./scripts/linux/verify-stack.sh
+    depends_on:
+      - sync_starrocks_olap

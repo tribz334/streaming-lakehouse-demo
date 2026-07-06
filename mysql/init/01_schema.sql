@@ -1,0 +1,59 @@
+CREATE DATABASE IF NOT EXISTS ad_ods;
+USE ad_ods;
+
+CREATE TABLE IF NOT EXISTS advertiser (
+  advertiser_id VARCHAR(32) PRIMARY KEY,
+  advertiser_name VARCHAR(128) NOT NULL,
+  industry VARCHAR(64) NOT NULL,
+  tier VARCHAR(32) NOT NULL,
+  home_region VARCHAR(64) NOT NULL,
+  signup_date DATE NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS campaign (
+  campaign_id VARCHAR(32) PRIMARY KEY,
+  advertiser_id VARCHAR(32) NOT NULL,
+  campaign_name VARCHAR(128) NOT NULL,
+  objective VARCHAR(32) NOT NULL,
+  budget DECIMAL(18,2) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_campaign_advertiser FOREIGN KEY (advertiser_id) REFERENCES advertiser(advertiser_id)
+);
+
+CREATE TABLE IF NOT EXISTS `unit` (
+  unit_id VARCHAR(32) PRIMARY KEY,
+  campaign_id VARCHAR(32) NOT NULL,
+  unit_name VARCHAR(128) NOT NULL,
+  bid_type VARCHAR(32) NOT NULL,
+  bid_amount DECIMAL(18,4) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_unit_campaign FOREIGN KEY (campaign_id) REFERENCES campaign(campaign_id)
+);
+
+CREATE TABLE IF NOT EXISTS creative (
+  creative_id VARCHAR(32) PRIMARY KEY,
+  campaign_id VARCHAR(32) NOT NULL,
+  unit_id VARCHAR(32) NOT NULL,
+  creative_name VARCHAR(128) NOT NULL,
+  format VARCHAR(32) NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_creative_campaign FOREIGN KEY (campaign_id) REFERENCES campaign(campaign_id),
+  CONSTRAINT fk_creative_unit FOREIGN KEY (unit_id) REFERENCES `unit`(unit_id)
+);
+
+CREATE TABLE IF NOT EXISTS ad_order (
+  order_id VARCHAR(64) PRIMARY KEY,
+  advertiser_id VARCHAR(32) NOT NULL,
+  creative_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  gmv DECIMAL(18,2) NOT NULL,
+  order_status VARCHAR(32) NOT NULL,
+  create_time TIMESTAMP NOT NULL,
+  payment_time TIMESTAMP NULL,
+  refund_time TIMESTAMP NULL,
+  finish_time TIMESTAMP NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

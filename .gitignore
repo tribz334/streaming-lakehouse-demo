@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+*.pid
+*.tmp
+*.inspect.ndjson
+~$*
+
+# Downloaded runtime dependencies are restored by scripts/download-flink-jars.*
+flink/lib/*.jar
+
+# Local runtime data and generated caches
+data/*.db
+data/*.db-shm
+data/*.db-wal
+dolphinscheduler/runs/
+paimon/experiments/*-report.json
+paimon/experiments/latest-report.json
+tmp/

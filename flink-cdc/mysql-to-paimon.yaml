@@ -1,0 +1,26 @@
+# Flink CDC YAML pipeline sketch for the thesis architecture.
+# Keep this alongside the runnable Flink SQL path. The current running stack
+# uses Flink JDBC for dimension bootstrap because the available SQL CDC jar
+# is not compatible with Flink 2.0.2 in this local image.
+
+source:
+  type: mysql
+  hostname: mysql
+  port: 3306
+  username: root
+  password: root
+  tables: ad_ods.advertiser,ad_ods.campaign,ad_ods.creative,ad_ods.ad_order
+  server-id: 5401-5404
+  server-time-zone: Asia/Shanghai
+
+sink:
+  type: paimon
+  catalog.properties.warehouse: file:///warehouse/paimon
+  catalog.properties.metastore: filesystem
+  database: ad_dw
+  table-name: ods_${tableName}
+
+pipeline:
+  name: mysql-cdc-to-paimon
+  parallelism: 1
+

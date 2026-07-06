@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>USTC Lakehouse Ops Dashboard</title>
+  <style>
+    body { margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; background: #f6f7f9; color: #1d252d; }
+    header { padding: 24px 32px; background: #15202b; color: white; }
+    h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 0; }
+    main { padding: 24px 32px 40px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 14px; margin-bottom: 22px; }
+    .card { background: white; border: 1px solid #dde3ea; border-radius: 8px; padding: 16px; }
+    .label { font-size: 13px; color: #65717d; margin-bottom: 8px; }
+    .value { font-size: 28px; font-weight: 700; }
+    section { background: white; border: 1px solid #dde3ea; border-radius: 8px; padding: 18px; margin: 16px 0; }
+    h2 { font-size: 18px; margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 9px 8px; border-bottom: 1px solid #e8edf2; text-align: left; vertical-align: top; }
+    th { color: #53616f; font-weight: 600; background: #f9fafb; }
+    .ok { color: #147d4f; }
+    .warn { color: #9a5b00; }
+    @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } main, header { padding-left: 18px; padding-right: 18px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>USTC Streaming Lakehouse Ops Dashboard</h1>
+    <div>Generated at 2026-07-03 22:36:17 from local Flink, Prometheus, StarRocks, and governance metadata.</div>
+  </header>
+  <main>
+    <div class="grid">
+      <div class="card"><div class="label">Flink Running Jobs</div><div class="value">0</div></div>
+      <div class="card"><div class="label">Flink Finished Jobs</div><div class="value">8</div></div>
+      <div class="card"><div class="label">Prometheus</div><div class="value ok">READY</div></div>
+      <div class="card"><div class="label">Governance Datasets</div><div class="value">12</div></div>
+      <div class="card"><div class="label">Grafana</div><div class="value warn">FALLBACK</div></div>
+      <div class="card"><div class="label">Loki</div><div class="value warn">FALLBACK</div></div>
+      <div class="card"><div class="label">Scheduler</div><div class="value ok">SUCCESS</div></div>
+      <div class="card"><div class="label">Workflow Duration</div><div class="value">105s</div></div>
+    </div>
+    <section>
+      <h2>Runtime Fallbacks</h2>
+      <table><thead><tr><th>Component</th><th>Status</th><th>Fallback Artifact</th></tr></thead><tbody>
+        <tr><td>Grafana</td><td>FALLBACK</td><td>ops-dashboard/index.html</td></tr>
+        <tr><td>Loki</td><td>FALLBACK</td><td>Docker container logs plus Prometheus targets</td></tr>
+        <tr><td>DolphinScheduler</td><td>LOCAL</td><td>dolphinscheduler/dashboard/index.html</td></tr>
+      </tbody></table>
+    </section>
+    <section>
+      <h2>StarRocks BI Views</h2>
+      <table><thead><tr><th>View</th><th>Rows</th></tr></thead><tbody><tr><td>attribution</td><td>0</td></tr>
+<tr><td>metrics</td><td>86</td></tr>
+<tr><td>fraud</td><td>1</td></tr>
+<tr><td>retention</td><td>1</td></tr>
+</tbody></table>
+    </section>
+    <section>
+      <h2>Prometheus Targets</h2>
+      <table><thead><tr><th>Job</th><th>Scrape URL</th><th>Health</th></tr></thead><tbody><tr><td>flink</td><td>http://flink-jobmanager:9249/metrics</td><td>up</td></tr>
+<tr><td>flink</td><td>http://flink-taskmanager:9249/metrics</td><td>up</td></tr>
+<tr><td>prometheus</td><td>http://prometheus:9090/metrics</td><td>up</td></tr>
+</tbody></table>
+    </section>
+    <section>
+      <h2>Offline Governance Lineage</h2>
+      <table><thead><tr><th>Job</th><th>Upstream</th><th>Downstream</th></tr></thead><tbody><tr><td>flink_01_ingest_to_paimon</td><td>urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td></tr>
+<tr><td>flink_02_dwd_enrich</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td></tr>
+<tr><td>flink_03_dws_metrics</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_10s,PROD)</td></tr>
+<tr><td>flink_04_ads_retention_batch</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)</td></tr>
+<tr><td>flink_05_ads_attribution_batch</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td></tr>
+<tr><td>flink_06_ads_fraud_batch</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td></tr>
+<tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_10s,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)</td></tr>
+<tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_attribution_summary,PROD)</td></tr>
+<tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_fraud_signal_summary,PROD)</td></tr>
+</tbody></table>
+    </section>
+  </main>
+</body>
+</html>

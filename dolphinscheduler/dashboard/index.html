@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>USTC Lakehouse Workflow Dashboard</title>
+  <style>
+    body { margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; background: #f7f8fa; color: #202832; }
+    header { padding: 24px 32px; background: #263238; color: white; }
+    h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: 0; }
+    main { padding: 24px 32px 42px; }
+    .summary { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .card, section { background: white; border: 1px solid #dfe5eb; border-radius: 8px; padding: 16px; }
+    .label { color: #65727f; font-size: 13px; margin-bottom: 8px; }
+    .value { font-size: 26px; font-weight: 700; }
+    section { margin-top: 16px; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #e7edf3; vertical-align: top; }
+    th { background: #f9fafb; color: #53616f; }
+    pre { white-space: pre-wrap; font-size: 12px; background: #101820; color: #edf4fb; padding: 14px; border-radius: 8px; overflow: auto; }
+    .ok { color: #147d4f; font-weight: 700; }
+    .bad { color: #b42318; font-weight: 700; }
+    @media (max-width: 900px) { .summary { grid-template-columns: 1fr; } main, header { padding-left: 18px; padding-right: 18px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>USTC Lakehouse Workflow Dashboard</h1>
+    <div>Generated at 2026-07-04 01:50:09. This is the local runnable scheduler fallback for DolphinScheduler.</div>
+  </header>
+  <main>
+    <div class="summary">
+      <div class="card"><div class="label">Latest Run</div><div class="value">20260626-231620</div></div>
+      <div class="card"><div class="label">Status</div><div class="value ok">SUCCESS</div></div>
+      <div class="card"><div class="label">Duration</div><div class="value">105s</div></div>
+    </div>
+    <section>
+      <h2>Latest Run Steps</h2>
+      <table><thead><tr><th>Step</th><th>Command</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead><tbody><tr><td>stop_flink_jobs</td><td>./scripts/stop-flink-jobs.ps1</td><td class="ok">SUCCESS</td><td>2s</td><td></td></tr>
+<tr><td>init_flink_ddl</td><td>./scripts/init-flink-ddl.ps1</td><td class="ok">SUCCESS</td><td>7s</td><td></td></tr>
+<tr><td>run_ads_batches</td><td>./scripts/run-ads-batches.ps1</td><td class="ok">SUCCESS</td><td>44s</td><td></td></tr>
+<tr><td>sync_starrocks_olap</td><td>./scripts/sync-starrocks-olap.ps1</td><td class="ok">SUCCESS</td><td>37s</td><td></td></tr>
+<tr><td>register_schemas</td><td>./scripts/register-schemas.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
+<tr><td>export_governance_metadata</td><td>./scripts/export-governance-metadata.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
+<tr><td>export_datahub_mcp</td><td>./scripts/export-datahub-mcp.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
+<tr><td>generate_ops_dashboard</td><td>./scripts/generate-ops-dashboard.ps1</td><td class="ok">SUCCESS</td><td>6s</td><td></td></tr>
+<tr><td>submit_streaming_jobs</td><td>./scripts/submit-streaming-jobs.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
+<tr><td>verify_stack</td><td>./scripts/verify-stack.ps1</td><td class="ok">SUCCESS</td><td>7s</td><td></td></tr>
+</tbody></table>
+    </section>
+    <section>
+      <h2>Recent Runs</h2>
+      <table><thead><tr><th>Run ID</th><th>Status</th><th>Started</th><th>Duration</th></tr></thead><tbody><tr><td>20260626-231620</td><td class="ok">SUCCESS</td><td>06/26/2026 23:16:20</td><td>105s</td></tr>
+</tbody></table>
+    </section>
+    <section>
+      <h2>DolphinScheduler Template</h2>
+      <pre>project: ustc-streaming-lakehouse-demo
+workflow: ad_lakehouse_daily_refresh
+description: &gt;
+  Linux task blueprint for the thesis lakehouse stack. The scripts are suitable
+  for a Linux host or a DolphinScheduler worker with Docker CLI access.
+tasks:
+  - name: init_flink_ddl
+    type: SHELL
+    command: bash ./scripts/linux/init-flink-ddl.sh
+  - name: submit_streaming_jobs
+    type: SHELL
+    command: bash ./scripts/linux/submit-streaming-jobs.sh
+    depends_on:
+      - init_flink_ddl
+  - name: run_ads_batches
+    type: SHELL
+    command: bash ./scripts/linux/run-ads-batches.sh
+    depends_on:
+      - submit_streaming_jobs
+  - name: sync_starrocks_olap
+    type: SHELL
+    command: bash ./scripts/linux/sync-starrocks.sh
+    depends_on:
+      - run_ads_batches
+  - name: verify_stack
+    type: SHELL
+    command: bash ./scripts/linux/verify-stack.sh
+    depends_on:
+      - sync_starrocks_olap
+</pre>
+    </section>
+  </main>
+</body>
+</html>
