@@ -12,6 +12,12 @@ WITH stats AS (
     (SELECT COUNT(*) FROM paimon.ad_dw.dwd_ad_events_di) AS dwd_count,
     (SELECT COUNT(*) FROM paimon.ad_dw.dwd_ad_events_di WHERE advertiser_id IS NULL OR campaign_id IS NULL OR unit_id IS NULL OR creative_id IS NULL) AS null_dimension_count,
     (SELECT COUNT(*) FROM paimon.ad_dw.dwd_ad_events_di WHERE spend < 0 OR gmv < 0) AS negative_amount_count,
+    (SELECT COUNT(*) FROM paimon.ad_dw.dwm_ad_event_wide) AS dwm_count,
+    (SELECT COUNT(*) FROM paimon.ad_dw.dws_advertiser_df) AS thesis_dws_count,
+    (SELECT COUNT(*) FROM (
+      SELECT conversion_id FROM paimon.ad_dw.dm_attribution_touchpoint_df
+      WHERE is_last_click GROUP BY conversion_id HAVING COUNT(*) > 1
+    )) AS duplicate_attribution_count,
     (SELECT COUNT(*) FROM paimon.ad_dw.dws_ad_metric_10s WHERE ctr < 0 OR ctr > 1) AS invalid_ctr_count,
     (SELECT COUNT(*) FROM paimon.ad_dw.dws_ad_metric_10s WHERE cvr < 0 OR cvr > 1) AS invalid_cvr_count,
     (SELECT COUNT(*) FROM paimon.ad_dw.dws_ad_metric_10s WHERE roi < 0) AS invalid_roi_count
@@ -44,6 +50,15 @@ SELECT * FROM (
   UNION ALL
   SELECT 'DQ008', 'ROI non-negative', 'DWS', 'dws_ad_metric_10s', CAST(invalid_roi_count AS DECIMAL(24,6)), '= 0',
          CASE WHEN invalid_roi_count = 0 THEN 'PASS' ELSE 'FAIL' END, 'MEDIUM', 'ROI cannot be negative.' FROM stats
+  UNION ALL
+  SELECT 'DQ009', 'DWM shared wide table non-empty', 'DWM', 'dwm_ad_event_wide', CAST(dwm_count AS DECIMAL(24,6)), '> 0',
+         CASE WHEN dwm_count > 0 THEN 'PASS' ELSE 'FAIL' END, 'HIGH', 'Offline shared detail processing must be materialized.' FROM stats
+  UNION ALL
+  SELECT 'DQ010', 'Thesis DWS advertiser subject non-empty', 'DWS', 'dws_advertiser_df', CAST(thesis_dws_count AS DECIMAL(24,6)), '> 0',
+         CASE WHEN thesis_dws_count > 0 THEN 'PASS' ELSE 'FAIL' END, 'HIGH', 'The canonical advertiser subject table must contain data.' FROM stats
+  UNION ALL
+  SELECT 'DQ011', 'Last-click attribution uniqueness', 'DM', 'dm_attribution_touchpoint_df', CAST(duplicate_attribution_count AS DECIMAL(24,6)), '= 0',
+         CASE WHEN duplicate_attribution_count = 0 THEN 'PASS' ELSE 'FAIL' END, 'CRITICAL', 'Each outcome may have at most one last-click touchpoint.' FROM stats
 ) rules;
 
 INSERT INTO paimon.ad_dw.ads_data_quality_result_di

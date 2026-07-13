@@ -2,7 +2,7 @@
 
 这个目录是论文系统的主要实现，使用 Docker Compose 组织真实技术栈组件。
 
-> 当前实现定位为单机可运行演示版，不是论文三节点生产级集群的 100% 等价复刻。逐项差距见 `IMPLEMENTATION_AUDIT.md`。
+> 当前实现包含论文一致的数据模型与单机三逻辑节点拓扑。三逻辑节点用于复现组件部署、分区副本、并行计算和故障演练，不等价于三台物理主机的性能数据。逐项边界见 `IMPLEMENTATION_AUDIT.md`。
 
 ## 技术栈映射
 
@@ -14,7 +14,8 @@
 | Flink CDC | MySQL binlog 已开启，CDC YAML 配置保留；当前可运行链路用 Flink JDBC 4.0 装载维表 |
 | Paimon 湖仓 | Paimon Flink 2.0 connector，warehouse: `/warehouse/paimon` |
 | Flink 流批一体 | Flink 2.0.2 JobManager/TaskManager |
-| ODS/DIM/DWD/DWS/ADS | `flink/sql/*.sql` 分层建表与作业 |
+| 流批不对称数仓 | 共享 ODS/DWD/DIM；实时止于 DWS；离线增加 DWM、DM、ADS |
+| 论文数据字典 | `09_thesis_model_tables.sql` 定义附录 A 的 DIM/DWD/DWM/DWS/DM 核心表 |
 | 订单生命周期 | Paimon `partial-update` 主键表 |
 | OLAP 服务 | StarRocks FE/BE 单节点，Paimon external catalog + 内部 OLAP 快照视图 |
 | BI 应用 | Superset 3.0.0，自动注册 StarRocks 数据库与四个 dataset |
@@ -43,6 +44,35 @@ Windows 用户从 `scripts/windows/start-demo.ps1` 启动。Linux 任务使用 `
 ```powershell
 ./scripts/windows/start-demo.ps1
 ```
+
+如果需要在单机上模拟论文中的多节点实验环境，可启动多容器逻辑节点版本：
+
+```powershell
+./scripts/windows/start-multi-node.ps1
+```
+
+该模式通过 `docker-compose.three-node.yml` 在同一台宿主机上启动三套逻辑节点：
+
+```text
+node-1: MySQL + Kafka-1 + Flink JM/TM + event-generator-1
+node-2: Kafka-2 + Flink TM-2 + event-generator-2
+node-3: Kafka-3 + Flink TM-3 + event-generator-3
+```
+
+`ods_log` 固定为 6 分区、3 副本、最小同步副本 2。需要同时启动三节点
+StarRocks BE 和完整监控栈时使用：
+
+```powershell
+./scripts/windows/start-multi-node.ps1 -WithOlap -WithOps
+```
+
+验证多节点状态：
+
+```powershell
+./scripts/windows/verify-multi-node.ps1
+```
+
+该实验环境用于验证多节点拓扑、任务注册、并行计算 slot、数据采集节点协同和流式链路可运行性。由于所有容器仍部署在同一台物理主机上，它属于单机多 Docker 的逻辑多节点环境，不用于证明跨物理机网络开销或真实多机容灾能力。
 
 如果当前已经有 Flink 流式作业在运行，避免重复提交可使用：
 
@@ -100,8 +130,8 @@ admin / admin
 
 1. MySQL 初始化广告主、计划、创意、订单表。
 2. 事件生成器持续写 Kafka `ods_log`，订单事件同时写 MySQL `ad_order`，保留 CDC 输入条件。
-3. 当前可运行 Flink SQL 读取 Kafka 和 MySQL JDBC 维表，长期写入 Paimon ODS/DIM/DWD；严格 CDC 版本见 `flink-cdc/mysql-to-paimon.yaml`。
-4. DWS 同时提供 `dws_ad_metric_stream_10s` 实时窗口指标和 `dws_ad_metric_10s` 批量刷新指标；单机演示环境在运行批任务前会暂停流任务以释放 slot。
+3. Flink SQL 读取 Kafka 和 MySQL JDBC 维表，长期写入共享 Paimon ODS/DIM/DWD；严格 CDC 版本见 `flink-cdc/mysql-to-paimon.yaml`。
+4. 实时链路写入 `dws_ad_stream_10s` 后收敛；离线链路继续物化多事实 DWD、`dwm_ad_event_wide`、六张主题 DWS、归因与反作弊 DM，再产出 ADS。
 5. Flink batch SQL 计算 ADS：
    - `ads_advertiser_retention_di`：广告主留存。
    - `ads_attribution_summary_di`：7 日窗口最后点击归因。

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-for job in 01_ingest_to_paimon.sql 02_dwd_enrich.sql 03a_dws_metrics_streaming.sql; do
+for job in 01_ingest_to_paimon.sql 02_dwd_enrich.sql 03a_dws_metrics_streaming.sql 03b_dws_thesis_streaming.sql; do
   log="/tmp/${job}.log"
   run_file="/tmp/run_${job}"
   docker compose --profile core exec -d flink-jobmanager /bin/bash -lc \

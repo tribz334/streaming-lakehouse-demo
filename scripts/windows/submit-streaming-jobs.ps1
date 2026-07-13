@@ -5,7 +5,8 @@ Set-Location $root
 $jobs = @(
   "01_ingest_to_paimon.sql",
   "02_dwd_enrich.sql",
-  "03a_dws_metrics_streaming.sql"
+  "03a_dws_metrics_streaming.sql",
+  "03b_dws_thesis_streaming.sql"
 )
 
 foreach ($job in $jobs) {

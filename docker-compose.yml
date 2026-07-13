@@ -98,8 +98,8 @@ services:
     image: ${FLINK_IMAGE}
     pull_policy: never
     profiles: ["core"]
+    hostname: flink-taskmanager-node-1
     command: taskmanager
-    scale: 1
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
@@ -120,11 +120,68 @@ services:
     depends_on:
       - flink-jobmanager
 
+  flink-taskmanager-node-2:
+    image: ${FLINK_IMAGE}
+    pull_policy: never
+    profiles: ["multi-node"]
+    hostname: flink-taskmanager-node-2
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 2048m
+        taskmanager.memory.jvm-metaspace.size: 256m
+        taskmanager.memory.network.min: 128m
+        taskmanager.memory.network.max: 256m
+        parallelism.default: 3
+        execution.checkpointing.interval: 10s
+        state.backend.type: hashmap
+        state.checkpoint-storage: filesystem
+        state.checkpoints.dir: file:///warehouse/checkpoints
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
+    volumes:
+      - warehouse:/warehouse
+    depends_on:
+      - flink-jobmanager
+
+  flink-taskmanager-node-3:
+    image: ${FLINK_IMAGE}
+    pull_policy: never
+    profiles: ["multi-node"]
+    hostname: flink-taskmanager-node-3
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 2048m
+        taskmanager.memory.jvm-metaspace.size: 256m
+        taskmanager.memory.network.min: 128m
+        taskmanager.memory.network.max: 256m
+        parallelism.default: 3
+        execution.checkpointing.interval: 10s
+        state.backend.type: hashmap
+        state.checkpoint-storage: filesystem
+        state.checkpoints.dir: file:///warehouse/checkpoints
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
+    volumes:
+      - warehouse:/warehouse
+    depends_on:
+      - flink-jobmanager
+
   event-generator:
     build:
       context: ./generator
+    image: ustc/event-generator:latest
     profiles: ["core"]
     environment:
+      GENERATOR_NODE_ID: ingest-node-1
+      GENERATOR_RANDOM_SEED: 20260713
+      GENERATOR_HISTORY_DAYS: 14
+      GENERATOR_HISTORY_EVENTS_PER_DAY: 600
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_INTERNAL}
       TOPIC: ods_log
       EVENT_INTERVAL_SECONDS: 0.25
@@ -143,6 +200,60 @@ services:
       mysql:
         condition: service_healthy
 
+  event-generator-node-2:
+    image: ustc/event-generator:latest
+    pull_policy: never
+    profiles: ["multi-node"]
+    environment:
+      GENERATOR_NODE_ID: ingest-node-2
+      GENERATOR_RANDOM_SEED: 20260713
+      GENERATOR_HISTORY_DAYS: 14
+      GENERATOR_HISTORY_EVENTS_PER_DAY: 600
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_INTERNAL}
+      TOPIC: ods_log
+      EVENT_INTERVAL_SECONDS: 0.35
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      FRAUD_INJECTION_ENABLED: "true"
+      FRAUD_BURST_EVERY: 240
+      FRAUD_BURST_SIZE: 24
+      FRAUD_USER_POOL: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  event-generator-node-3:
+    image: ustc/event-generator:latest
+    pull_policy: never
+    profiles: ["multi-node"]
+    environment:
+      GENERATOR_NODE_ID: ingest-node-3
+      GENERATOR_RANDOM_SEED: 20260713
+      GENERATOR_HISTORY_DAYS: 14
+      GENERATOR_HISTORY_EVENTS_PER_DAY: 600
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_INTERNAL}
+      TOPIC: ods_log
+      EVENT_INTERVAL_SECONDS: 0.45
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      FRAUD_INJECTION_ENABLED: "true"
+      FRAUD_BURST_EVERY: 300
+      FRAUD_BURST_SIZE: 18
+      FRAUD_USER_POOL: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
   starrocks:
     image: starrocks/fe-ubuntu:3.1-latest
     profiles: ["olap"]
@@ -154,7 +265,7 @@ services:
       CONFIGMAP_MOUNT_PATH: /demo-conf
     ports:
       - "8030:8030"
-      - "9030:9030"
+      - "19030:9030"
       - "9010:9010"
     volumes:
       - starrocks-fe-meta:/opt/starrocks/fe/meta
@@ -177,9 +288,9 @@ services:
       LOG_CONSOLE: "1"
       CONFIGMAP_MOUNT_PATH: /demo-conf
     ports:
-      - "8040:8040"
-      - "9050:9050"
-      - "9060:9060"
+      - "18040:8040"
+      - "19050:9050"
+      - "19060:9060"
     volumes:
       - starrocks-be-storage:/opt/starrocks/be/storage
       - warehouse:/warehouse
@@ -211,6 +322,7 @@ services:
         superset init &&
         superset set-database-uri -d StarRocks -u mysql://root@starrocks:9030/ad_ads &&
         python /app/pythonpath/bootstrap_datasets.py &&
+        python /app/pythonpath/bootstrap_dashboard.py &&
         superset run -h 0.0.0.0 -p 8088
 
   prometheus:

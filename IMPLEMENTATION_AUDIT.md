@@ -8,7 +8,9 @@
 | --- | --- | --- |
 | Kafka 埋点事件接入 | 事件生成器持续写入 `ods_log` | `generator/produce_events.py`、Kafka 容器 |
 | MySQL 业务数据源 | 广告主、计划、创意、订单数据 | `mysql/init`、MySQL 容器 |
-| Paimon 湖仓分层 | ODS、DIM、DWD、DWS、ADS 表 | `flink/sql/00_catalogs_and_tables.sql` |
+| Paimon 湖仓分层 | 共享 ODS/DWD/DIM，实时 DWS 收敛，离线扩展 DWM/DM/ADS | `00_catalogs_and_tables.sql`、`09_thesis_model_tables.sql` |
+| 附录 A 数据模型 | 多事实 DWD、共享 DWM、六主题 DWS、实时 DWS、两张 DM 表 | `07_thesis_offline_layers.sql` |
+| 单机三逻辑节点 | 3 Kafka Broker、3 Flink TM、3 采集实例，可选 3 StarRocks BE | `docker-compose.three-node.yml` |
 | Flink 流批处理 | ODS/DWD 长期流任务，DWS/ADS 有界批刷新 | `scripts/windows/*.ps1`、`scripts/linux/*.sh` |
 | 订单生命周期 | Paimon partial-update 主键表 | `dwd_order_lifecycle_df` |
 | 核心广告指标 | 消耗、GMV、曝光、点击、转化、CTR、CVR、ROI | `dws_ad_metric_10s`、StarRocks 视图 |
@@ -35,9 +37,10 @@
 | DataHub | 提供资产、血缘、术语离线导出；不是真实 DataHub UI 和自动字段级血缘采集。 |
 | Grafana / Loki | 配置文件已保留，本地运维 HTML 看板可用；镜像未成功拉取，真实 Grafana/Loki 未运行。 |
 
-## 尚未实现
+## 物理环境限制
 
-- 三节点分布式集群与 YARN real-time/offline/routine/ad-hoc 队列隔离。
+- 单机三逻辑节点不能证明跨物理机网络开销、机架故障隔离或论文中的硬件吞吐结果。
+- YARN real-time/offline/routine/ad-hoc 队列仍以 Compose profile 和作业类型模拟，未部署真实 YARN Capacity Scheduler。
 - Flink、Kafka、HDFS、StarRocks 的高可用、多副本和节点故障自动恢复演练。
 - DataHub 字段级血缘、数据质量规则体系、负责人维护和影响分析 UI。
 - Kerberos、Ranger、字段级访问控制、敏感字段脱敏。

@@ -6,6 +6,7 @@ cd "$ROOT"
 
 for job in \
   03_dws_metrics.sql \
+  07_thesis_offline_layers.sql \
   04_ads_retention_batch.sql \
   05_ads_attribution_batch.sql \
   06_ads_fraud_batch.sql \
@@ -16,4 +17,4 @@ for job in \
     "cat /opt/flink/usrlib/sql/00_catalogs_and_tables.sql /opt/flink/usrlib/sql/${job} > ${run_file} && /opt/flink/bin/sql-client.sh -f ${run_file}"
 done
 
-echo "DWS metrics, retention, attribution, fraud, and quality batches finished."
+echo "Thesis DWD/DWM/DWS/DM layers and ADS batches finished."

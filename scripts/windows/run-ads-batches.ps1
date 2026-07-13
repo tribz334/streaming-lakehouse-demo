@@ -4,6 +4,7 @@ Set-Location $root
 
 $jobs = @(
   "03_dws_metrics.sql",
+  "07_thesis_offline_layers.sql",
   "04_ads_retention_batch.sql",
   "05_ads_attribution_batch.sql",
   "06_ads_fraud_batch.sql",
@@ -22,4 +23,4 @@ foreach ($job in $jobs) {
   Write-Host "Finished $job."
 }
 
-Write-Host "ADS metrics, retention, attribution, fraud, and quality batches finished."
+Write-Host "Thesis DWD/DWM/DWS/DM layers and ADS batches finished."

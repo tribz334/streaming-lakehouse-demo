@@ -1,18 +1,28 @@
 USE ad_ods;
 
 INSERT INTO advertiser(advertiser_id, advertiser_name, industry, tier, home_region, signup_date) VALUES
-('adv_001','Advertiser 01','ecommerce','KA','Zhejiang','2026-04-01'),
-('adv_002','Advertiser 02','game','SMB','Beijing','2026-04-02'),
-('adv_003','Advertiser 03','education','Growth','Guangdong','2026-04-03'),
-('adv_004','Advertiser 04','local_service','KA','Sichuan','2026-04-04'),
-('adv_005','Advertiser 05','beauty','SMB','Hubei','2026-04-05'),
-('adv_006','Advertiser 06','ecommerce','Growth','Jiangsu','2026-04-06'),
-('adv_007','Advertiser 07','game','KA','Hebei','2026-04-07'),
-('adv_008','Advertiser 08','education','SMB','Fujian','2026-04-08'),
-('adv_009','Advertiser 09','local_service','Growth','Chongqing','2026-04-09'),
-('adv_010','Advertiser 10','beauty','KA','Henan','2026-04-10'),
-('adv_011','Advertiser 11','ecommerce','SMB','Shanghai','2026-04-11'),
-('adv_012','Advertiser 12','game','Growth','Tianjin','2026-04-12')
+('adv_001','OpenAI','technology','KA','California','2026-04-01'),
+('adv_002','SpaceX','aerospace','KA','Texas','2026-04-02'),
+('adv_003','UNIQLO 优衣库','apparel','KA','Tokyo','2026-04-03'),
+('adv_004','Coca-Cola 可口可乐','beverage','KA','Georgia','2026-04-04'),
+('adv_005','Blue Moon 蓝月亮','household_care','KA','Guangdong','2026-04-05'),
+('adv_006','Nike','sportswear','Growth','Oregon','2026-04-06'),
+('adv_007','Adidas','sportswear','Growth','Bavaria','2026-04-07'),
+('adv_008','Tencent Games 腾讯游戏','game','KA','Guangdong','2026-04-08'),
+('adv_009','NetEase Games 网易游戏','game','Growth','Zhejiang','2026-04-09'),
+('adv_010','L''Oreal 欧莱雅','beauty','KA','Paris','2026-04-10'),
+('adv_011','Xiaomi 小米','consumer_electronics','Growth','Beijing','2026-04-11'),
+('adv_012','Luckin Coffee 瑞幸咖啡','coffee','SMB','Fujian','2026-04-12'),
+('adv_013','Apple','consumer_electronics','KA','California','2026-04-13'),
+('adv_014','Huawei 华为','consumer_electronics','KA','Guangdong','2026-04-14'),
+('adv_015','BYD 比亚迪','automotive','KA','Guangdong','2026-04-15'),
+('adv_016','Tesla','automotive','KA','Texas','2026-04-16'),
+('adv_017','Tmall 天猫','ecommerce','KA','Zhejiang','2026-04-17'),
+('adv_018','JD.com 京东','ecommerce','KA','Beijing','2026-04-18'),
+('adv_019','Meituan 美团','local_service','Growth','Beijing','2026-04-19'),
+('adv_020','Trip.com 携程','travel','Growth','Shanghai','2026-04-20'),
+('adv_021','miHoYo 米哈游','game','Growth','Shanghai','2026-04-21'),
+('adv_022','Proya 珀莱雅','beauty','SMB','Zhejiang','2026-04-22')
 ON DUPLICATE KEY UPDATE
   advertiser_name=VALUES(advertiser_name),
   industry=VALUES(industry),
@@ -21,20 +31,30 @@ ON DUPLICATE KEY UPDATE
   signup_date=VALUES(signup_date);
 
 INSERT INTO campaign(campaign_id, advertiser_id, campaign_name, objective, budget, status) VALUES
-('cmp_001_1','adv_001','Campaign 01-1','ROI',50000,'running'),
-('cmp_001_2','adv_001','Campaign 01-2','GMV',30000,'running'),
-('cmp_002_1','adv_002','Campaign 02-1','CTR',26000,'running'),
-('cmp_002_2','adv_002','Campaign 02-2','Retention',22000,'running'),
-('cmp_003_1','adv_003','Campaign 03-1','ROI',42000,'running'),
-('cmp_004_1','adv_004','Campaign 04-1','GMV',28000,'running'),
-('cmp_005_1','adv_005','Campaign 05-1','CTR',24000,'running'),
-('cmp_006_1','adv_006','Campaign 06-1','ROI',45000,'running'),
-('cmp_007_1','adv_007','Campaign 07-1','GMV',51000,'running'),
-('cmp_008_1','adv_008','Campaign 08-1','CTR',17000,'running'),
-('cmp_009_1','adv_009','Campaign 09-1','Retention',33000,'running'),
-('cmp_010_1','adv_010','Campaign 10-1','ROI',70000,'running'),
-('cmp_011_1','adv_011','Campaign 11-1','GMV',21000,'running'),
-('cmp_012_1','adv_012','Campaign 12-1','CTR',19000,'running')
+('cmp_001_1','adv_001','ChatGPT Plus Growth','ROI',50000,'running'),
+('cmp_001_2','adv_001','OpenAI API for Business','GMV',30000,'running'),
+('cmp_002_1','adv_002','Starlink Residential','CTR',26000,'running'),
+('cmp_002_2','adv_002','Starlink Roam','Retention',22000,'running'),
+('cmp_003_1','adv_003','UNIQLO Summer Collection','ROI',42000,'running'),
+('cmp_004_1','adv_004','Coca-Cola Summer Campaign','GMV',28000,'running'),
+('cmp_005_1','adv_005','Blue Moon Deep Clean Campaign','CTR',24000,'running'),
+('cmp_006_1','adv_006','Nike Running Collection','ROI',45000,'running'),
+('cmp_007_1','adv_007','Adidas Originals','GMV',51000,'running'),
+('cmp_008_1','adv_008','Tencent Games New Release','CTR',17000,'running'),
+('cmp_009_1','adv_009','NetEase Games Season Pass','Retention',33000,'running'),
+('cmp_010_1','adv_010','LOreal Beauty Festival','ROI',70000,'running'),
+('cmp_011_1','adv_011','Xiaomi Smart Life','GMV',21000,'running'),
+('cmp_012_1','adv_012','Luckin Summer Coffee','CTR',19000,'running'),
+('cmp_013_1','adv_013','Apple Back to School','GMV',68000,'running'),
+('cmp_014_1','adv_014','Huawei Flagship Launch','ROI',72000,'running'),
+('cmp_015_1','adv_015','BYD New Energy Sedan','CTR',64000,'running'),
+('cmp_016_1','adv_016','Tesla Model Y Campaign','CTR',66000,'running'),
+('cmp_017_1','adv_017','Tmall 618 Festival','GMV',85000,'running'),
+('cmp_018_1','adv_018','JD Super Brand Day','GMV',78000,'running'),
+('cmp_019_1','adv_019','Meituan Local Deals','ROI',46000,'running'),
+('cmp_020_1','adv_020','Trip.com Summer Travel','ROI',52000,'running'),
+('cmp_021_1','adv_021','Genshin Impact New Version','Retention',58000,'running'),
+('cmp_022_1','adv_022','Proya Skincare Festival','GMV',36000,'running')
 ON DUPLICATE KEY UPDATE campaign_name=VALUES(campaign_name);
 
 INSERT INTO `unit`(unit_id, campaign_id, unit_name, bid_type, bid_amount, status) VALUES
@@ -51,7 +71,17 @@ INSERT INTO `unit`(unit_id, campaign_id, unit_name, bid_type, bid_amount, status
 ('unit_crt_009_1_1','cmp_009_1','Unit 09-1-1','OCPC',3.1000,'running'),
 ('unit_crt_010_1_1','cmp_010_1','Unit 10-1-1','CPC',3.8000,'running'),
 ('unit_crt_011_1_1','cmp_011_1','Unit 11-1-1','OCPC',2.6000,'running'),
-('unit_crt_012_1_1','cmp_012_1','Unit 12-1-1','CPM',17.0000,'running')
+('unit_crt_012_1_1','cmp_012_1','Unit 12-1-1','CPM',17.0000,'running'),
+('unit_crt_013_1_1','cmp_013_1','Apple Product Feed','OCPC',4.2000,'running'),
+('unit_crt_014_1_1','cmp_014_1','Huawei Launch Video','OCPC',4.0000,'running'),
+('unit_crt_015_1_1','cmp_015_1','BYD Lead Generation','CPC',5.2000,'running'),
+('unit_crt_016_1_1','cmp_016_1','Tesla Test Drive','CPC',5.6000,'running'),
+('unit_crt_017_1_1','cmp_017_1','Tmall Product Feed','OCPC',3.6000,'running'),
+('unit_crt_018_1_1','cmp_018_1','JD Product Feed','OCPC',3.5000,'running'),
+('unit_crt_019_1_1','cmp_019_1','Meituan Local Feed','CPC',2.4000,'running'),
+('unit_crt_020_1_1','cmp_020_1','Trip.com Travel Feed','OCPC',3.8000,'running'),
+('unit_crt_021_1_1','cmp_021_1','miHoYo Game Video','CPM',22.0000,'running'),
+('unit_crt_022_1_1','cmp_022_1','Proya Beauty Feed','OCPC',3.1000,'running')
 ON DUPLICATE KEY UPDATE unit_name=VALUES(unit_name), bid_amount=VALUES(bid_amount);
 
 INSERT INTO creative(creative_id, campaign_id, unit_id, creative_name, format) VALUES
@@ -68,5 +98,15 @@ INSERT INTO creative(creative_id, campaign_id, unit_id, creative_name, format) V
 ('crt_009_1_1','cmp_009_1','unit_crt_009_1_1','Creative 09-1-1','live_room'),
 ('crt_010_1_1','cmp_010_1','unit_crt_010_1_1','Creative 10-1-1','short_video'),
 ('crt_011_1_1','cmp_011_1','unit_crt_011_1_1','Creative 11-1-1','feed_card'),
-('crt_012_1_1','cmp_012_1','unit_crt_012_1_1','Creative 12-1-1','live_room')
+('crt_012_1_1','cmp_012_1','unit_crt_012_1_1','Creative 12-1-1','live_room'),
+('crt_013_1_1','cmp_013_1','unit_crt_013_1_1','Apple Campus Offer','feed_card'),
+('crt_014_1_1','cmp_014_1','unit_crt_014_1_1','Huawei Launch Film','short_video'),
+('crt_015_1_1','cmp_015_1','unit_crt_015_1_1','BYD Test Drive','feed_card'),
+('crt_016_1_1','cmp_016_1','unit_crt_016_1_1','Tesla Model Y Video','short_video'),
+('crt_017_1_1','cmp_017_1','unit_crt_017_1_1','Tmall 618 Live Room','live_room'),
+('crt_018_1_1','cmp_018_1','unit_crt_018_1_1','JD Brand Day Feed','feed_card'),
+('crt_019_1_1','cmp_019_1','unit_crt_019_1_1','Meituan Nearby Deals','feed_card'),
+('crt_020_1_1','cmp_020_1','unit_crt_020_1_1','Trip.com Summer Video','short_video'),
+('crt_021_1_1','cmp_021_1','unit_crt_021_1_1','Genshin Version Trailer','short_video'),
+('crt_022_1_1','cmp_022_1','unit_crt_022_1_1','Proya Beauty Live','live_room')
 ON DUPLICATE KEY UPDATE creative_name=VALUES(creative_name);
