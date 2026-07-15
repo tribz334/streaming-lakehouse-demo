@@ -20,7 +20,7 @@
 | Superset 接入 | 注册实时指标、留存、归因、反作弊四个数据集 | `superset/bootstrap_datasets.py` |
 | Prometheus | Flink 指标采集和 targets API | `prometheus/prometheus.yml` |
 | 元数据与血缘导出 | DataHub 风格 JSON 和 MCP-style JSONL | `datahub/metadata`、`datahub/mcp` |
-| 本地工作流 | 批刷新、同步、治理、验证和运行历史 | `scripts/windows/run-demo-workflow.ps1` |
+| 本地工作流 | 批刷新、同步、治理、验证和运行历史 | `scripts/windows/init-flink-ddl.ps1`、`run-ads-batches.ps1`、`sync-starrocks-olap.ps1` |
 | 归因增强 | 7 日最后点击归因 | `05_ads_attribution_batch.sql` |
 | 反作弊增强 | 点击突增、异常 CTR、集中用户规则 | `06_ads_fraud_batch.sql` |
 

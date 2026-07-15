@@ -371,7 +371,7 @@ services:
         -Djavax.jdo.option.ConnectionURL=jdbc:derby:;databaseName=/opt/hive/data/metastore_db;create=true
         -Djavax.jdo.option.ConnectionDriverName=org.apache.derby.jdbc.EmbeddedDriver
     ports:
-      - "9083:9083"
+      - "19083:9083"
     volumes:
       - hive-metastore-data:/opt/hive/data
 

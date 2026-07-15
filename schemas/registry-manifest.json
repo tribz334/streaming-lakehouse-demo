@@ -1,9 +1,0 @@
-[
-  { "groupId": "ad-demo", "artifactId": "ods_log-value", "file": "ods_log.schema.json", "source": "kafka", "object": "ods_log" },
-  { "groupId": "mysql-ad-ods", "artifactId": "advertiser", "file": "tables/mysql-advertiser.schema.json", "source": "mysql", "object": "ad_ods.advertiser" },
-  { "groupId": "mysql-ad-ods", "artifactId": "campaign", "file": "tables/mysql-campaign.schema.json", "source": "mysql", "object": "ad_ods.campaign" },
-  { "groupId": "mysql-ad-ods", "artifactId": "unit", "file": "tables/mysql-unit.schema.json", "source": "mysql", "object": "ad_ods.unit" },
-  { "groupId": "mysql-ad-ods", "artifactId": "ad-order", "file": "tables/mysql-ad-order.schema.json", "source": "mysql", "object": "ad_ods.ad_order" },
-  { "groupId": "paimon-ad-dw", "artifactId": "dwd-ad-events-di", "file": "tables/paimon-dwd-ad-events.schema.json", "source": "paimon", "object": "ad_dw.dwd_ad_events_di" },
-  { "groupId": "paimon-ad-dw", "artifactId": "dws-ad-metric-stream-10s", "file": "tables/paimon-dws-ad-metric-stream.schema.json", "source": "paimon", "object": "ad_dw.dws_ad_metric_stream_10s" }
-]

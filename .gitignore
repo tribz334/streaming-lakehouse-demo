@@ -22,3 +22,7 @@ dolphinscheduler/runs/
 paimon/experiments/*-report.json
 paimon/experiments/latest-report.json
 tmp/
+
+# Docker Desktop WSL data if it is manually moved into this project.
+# Keep this out of git; it can contain very large virtual disks.
+DockerDesktopWSL/

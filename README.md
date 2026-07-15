@@ -21,9 +21,9 @@
 | BI 应用 | Superset 3.0.0，自动注册 StarRocks 数据库与四个 dataset |
 | Schema Registry | Apicurio Registry 3.2.5，已注册 Kafka `ods_log-value` JSON schema |
 | 运维观测 | Prometheus 已验证；`ops-dashboard/index.html` 本地看板已生成；Grafana/Loki profile 与 dashboard 配置已预留 |
-| 元数据服务 | Hive Metastore 4.0.1，Derby demo 存储，9083 已验证 |
+| 元数据服务 | Hive Metastore 4.0.1，Derby demo 存储，宿主机映射端口 `19083` |
 | 数据治理 | `scripts/windows/export-governance-metadata.ps1` 导出 DataHub 风格 URN、血缘、术语 JSON；`export-datahub-mcp.ps1` 导出 MCP-style JSONL |
-| 调度编排 | `scripts/windows/run-demo-workflow.ps1` 本地 runner；`scripts/linux/*.sh` 容器/Linux 任务入口；`dolphinscheduler/workflows/ad-lakehouse-demo.yaml` 保存 DAG 模板 |
+| 调度编排 | `scripts/linux/*.sh` 容器/Linux 任务入口；`dolphinscheduler/workflows/ad-lakehouse-demo.yaml` 保存 DAG 模板 |
 
 说明：论文写的是 Flink 2.0 + Paimon 1.0。Maven 当前可用的 Flink 2.0 专用 Paimon bridge 从 1.1.x 起提供，因此默认使用 `paimon-flink-2.0:1.1.1`。如果严格使用 Paimon 1.0，可把 Flink 降到 1.20 并改用 `paimon-flink-1.20`。
 
@@ -35,17 +35,11 @@ scripts/
 └─ linux/    # Linux 宿主机或调度 worker 使用的 Bash 任务入口
 ```
 
-Windows 用户从 `scripts/windows/start-demo.ps1` 启动。Linux 任务使用 `init-flink-ddl.sh`、`submit-streaming-jobs.sh`、`run-ads-batches.sh`、`sync-starrocks.sh` 和 `verify-stack.sh`。其中 StarRocks 同步暂时通过跨平台 PowerShell Core 复用已验证的解析实现。
+Windows 用户从 `scripts/windows/start-multi-node.ps1` 启动。Linux 任务使用 `init-flink-ddl.sh`、`submit-streaming-jobs.sh`、`run-ads-batches.sh`、`sync-starrocks.sh` 和 `verify-stack.sh`。其中 StarRocks 同步暂时通过跨平台 PowerShell Core 复用已验证的解析实现。
 
 ## 启动步骤
 
-先启动 Docker Desktop，然后在本目录运行：
-
-```powershell
-./scripts/windows/start-demo.ps1
-```
-
-如果需要在单机上模拟论文中的多节点实验环境，可启动多容器逻辑节点版本：
+先启动 Docker Desktop，然后在本目录运行多节点脚本：
 
 ```powershell
 ./scripts/windows/start-multi-node.ps1
@@ -74,28 +68,20 @@ StarRocks BE 和完整监控栈时使用：
 
 该实验环境用于验证多节点拓扑、任务注册、并行计算 slot、数据采集节点协同和流式链路可运行性。由于所有容器仍部署在同一台物理主机上，它属于单机多 Docker 的逻辑多节点环境，不用于证明跨物理机网络开销或真实多机容灾能力。
 
-如果当前已经有 Flink 流式作业在运行，避免重复提交可使用：
-
-```powershell
-./scripts/windows/start-demo.ps1 -SkipStreamingSubmit
-```
-
 也可以分步骤运行：
 
 ```powershell
-./scripts/windows/start-core.ps1
+./scripts/windows/download-flink-jars.ps1
+docker compose -f docker-compose.yml -f docker-compose.three-node.yml --profile core --profile multi-node up -d --build
 ./scripts/windows/init-flink-ddl.ps1
 ./scripts/windows/submit-streaming-jobs.ps1
 ```
-
-`start-core.ps1` 会先把 Paimon、Kafka connector、MySQL CDC connector、MySQL JDBC 与 Hadoop shaded jar 下载到 `flink/lib/`，再构建 Flink 镜像。
 
 等 Kafka 事件流和 Flink 作业运行一会儿后，执行：
 
 ```powershell
 ./scripts/windows/run-ads-batches.ps1
-./scripts/windows/query-paimon-counts.ps1
-./scripts/windows/verify-stack.ps1
+./scripts/windows/verify-multi-node.ps1
 ```
 
 OLAP / BI 层：
@@ -104,7 +90,6 @@ OLAP / BI 层：
 docker compose --profile olap up -d starrocks starrocks-be
 ./scripts/windows/init-starrocks.ps1
 ./scripts/windows/sync-starrocks-olap.ps1
-./scripts/windows/start-bi.ps1
 ```
 
 访问入口：
@@ -114,7 +99,7 @@ docker compose --profile olap up -d starrocks starrocks-be
 - Superset: http://127.0.0.1:8088
 - Apicurio Registry: http://127.0.0.1:8081/apis/registry/v3/system/info
 - Prometheus: http://127.0.0.1:19090
-- Hive Metastore Thrift: 127.0.0.1:9083
+- Hive Metastore Thrift: 127.0.0.1:19083
 - Local Ops Dashboard: `ops-dashboard/index.html`
 - Local Scheduler Dashboard: `dolphinscheduler/dashboard/index.html`
 - DolphinScheduler: http://127.0.0.1:12345/dolphinscheduler/ui/ (`admin` / `dolphinscheduler123`)
@@ -143,8 +128,7 @@ admin / admin
 8. `export-governance-metadata.ps1` 导出 DataHub 风格离线元数据，覆盖 Kafka、Paimon、StarRocks 资产和核心血缘；`export-datahub-mcp.ps1` 额外导出 `datahub/mcp/metadata_change_proposals.jsonl`。
 9. `register-schemas.ps1` 向 Apicurio 注册 `ad-demo/ods_log-value` JSON schema。
 10. `generate-ops-dashboard.ps1` 汇总 Flink、Prometheus、StarRocks、治理元数据、调度状态和运行时 fallback，生成本地 HTML 运维看板。
-11. `run-demo-workflow.ps1` 会先停止当前 Flink 作业，刷新 DWS/ADS 及数据质量结果，同步 StarRocks，再恢复 ODS、DWD 和实时 DWS 三条长期流任务。
-12. `bootstrap-dolphinscheduler.ps1` 通过 DolphinScheduler OpenAPI 自动创建项目和 `lakehouse_component_smoke_test` DAG，依次在 Linux worker 中验证 Flink、Prometheus 和 StarRocks，并将真实执行回执写入 `dolphinscheduler/runs/dolphinscheduler-execution.txt`。完整 DWS/ADS 刷新仍由本机 PowerShell 工作流执行，后续可继续迁移为容器原生任务。
+11. `bootstrap-dolphinscheduler.ps1` 通过 DolphinScheduler OpenAPI 自动创建项目和 `lakehouse_component_smoke_test` DAG，依次在 Linux worker 中验证 Flink、Prometheus 和 StarRocks，并将真实执行回执写入 `dolphinscheduler/runs/dolphinscheduler-execution.txt`。
 
 ## Paimon 湖仓实验与数据质量
 
@@ -159,7 +143,6 @@ docker compose --profile core ps
 docker compose --profile core logs -f flink-jobmanager
 docker compose --profile core logs -f event-generator
 docker compose --profile olap exec -T starrocks bash -lc "mysql -h127.0.0.1 -P9030 -uroot -e 'SHOW CATALOGS;'"
-./scripts/windows/run-demo-workflow.ps1
 ./scripts/windows/run-ads-batches.ps1
 ./scripts/windows/run-paimon-experiments.ps1
 ./scripts/windows/sync-starrocks-olap.ps1
@@ -168,5 +151,5 @@ docker compose --profile olap exec -T starrocks bash -lc "mysql -h127.0.0.1 -P90
 ./scripts/windows/export-datahub-mcp.ps1
 ./scripts/windows/generate-ops-dashboard.ps1
 ./scripts/windows/generate-scheduler-dashboard.ps1
-./scripts/windows/stop-stack.ps1
+docker compose -f docker-compose.yml -f docker-compose.three-node.yml --profile core --profile multi-node down --remove-orphans
 ```

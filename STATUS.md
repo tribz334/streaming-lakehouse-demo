@@ -29,12 +29,11 @@ Last verified: 2026-06-26 23:18 Asia/Shanghai.
 - Prometheus is reachable at `http://127.0.0.1:19090/-/ready`.
 - Apicurio Registry 3.2.5 is reachable at `http://127.0.0.1:8081/apis/registry/v3/system/info`.
 - Apicurio has one registered JSON schema artifact: `ad-demo/ods_log-value`.
-- Hive Metastore 4.0.1 is reachable on `127.0.0.1:9083`.
+- Hive Metastore 4.0.1 is reachable on `127.0.0.1:19083`.
 - DataHub-style offline governance metadata was exported to `datahub/metadata/lakehouse_metadata.json`.
 - DataHub MCP-style JSONL was exported to `datahub/mcp/metadata_change_proposals.jsonl`.
 - A local ops dashboard was generated at `ops-dashboard/index.html`.
 - A local scheduler dashboard was generated at `dolphinscheduler/dashboard/index.html`.
-- The local workflow runner now lives at `scripts/windows/run-demo-workflow.ps1`; the recorded 105-second run predates the directory migration.
 - A DolphinScheduler workflow template is available at `dolphinscheduler/workflows/ad-lakehouse-demo.yaml`.
 
 ## Latest Paimon Counts
@@ -70,7 +69,7 @@ v_fraud_signal_summary         12
 ## Remaining
 
 - Grafana/Loki runtime validation is still pending because the image pull failed again on Docker Hub TLS handshake timeout at 2026-06-26 23:03. Config and dashboard skeletons are present, and `ops-dashboard/index.html` is the verified local fallback dashboard.
-- DolphinScheduler standalone runtime validation is still pending because the Docker image pull was interrupted by the same Docker Hub TLS timeout. `run-demo-workflow.ps1`, run-history JSON, scheduler dashboard, and the YAML workflow template are present as fallback artifacts.
+- DolphinScheduler standalone runtime validation is still pending because the Docker image pull was interrupted by the same Docker Hub TLS timeout. Run-history JSON, scheduler dashboard, and the YAML workflow template are present as fallback artifacts.
 - DataHub is not yet implemented as a running local profile; an offline DataHub-style metadata export and MCP-style JSONL export are present, and a real ingestion target can be added when a DataHub service is available.
 - Strict MySQL CDC execution remains a compatibility item. The current demo keeps the CDC YAML sketch and uses JDBC bootstrap for a stable Flink 2.0.2 path.
 - Direct StarRocks-to-Paimon querying should be retested with a newer StarRocks image when Docker Hub access is stable.

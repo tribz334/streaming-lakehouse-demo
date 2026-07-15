@@ -6,6 +6,8 @@ DROP VIEW IF EXISTS ad_ads.v_attribution_summary;
 DROP VIEW IF EXISTS ad_ads.v_fraud_signal_summary;
 DROP VIEW IF EXISTS ad_ads.v_data_quality_result;
 DROP VIEW IF EXISTS ad_ads.v_data_quality_summary;
+DROP VIEW IF EXISTS ad_ads.v_dwd_ad_events_detail;
+DROP VIEW IF EXISTS ad_ads.v_dwm_ad_event_wide;
 
 CREATE EXTERNAL CATALOG paimon_catalog
 PROPERTIES (
@@ -37,3 +39,11 @@ FROM paimon_catalog.ad_dw.ads_data_quality_result_di;
 CREATE OR REPLACE VIEW ad_ads.v_data_quality_summary AS
 SELECT *
 FROM paimon_catalog.ad_dw.ads_data_quality_summary_di;
+
+CREATE OR REPLACE VIEW ad_ads.v_dwd_ad_events_detail AS
+SELECT *
+FROM paimon_catalog.ad_dw.dwd_ad_events_di;
+
+CREATE OR REPLACE VIEW ad_ads.v_dwm_ad_event_wide AS
+SELECT *
+FROM paimon_catalog.ad_dw.dwm_ad_event_wide;
