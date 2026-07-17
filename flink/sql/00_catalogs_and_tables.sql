@@ -4,6 +4,8 @@ SET 'table.exec.sink.upsert-materialize' = 'NONE';
 
 CREATE CATALOG paimon WITH (
   'type' = 'paimon',
+  'metastore' = 'hive',
+  'uri' = 'thrift://hive-metastore:9083',
   'warehouse' = 'file:///warehouse/paimon'
 );
 
@@ -37,7 +39,7 @@ CREATE TABLE IF NOT EXISTS ods_log_kafka (
 );
 
 -- Relay the finalized Paimon 10-second windows to StarRocks Routine Load.
--- Kafka decouples the Flink 2.0 job from the StarRocks connector release cycle.
+-- Kafka decouples the Flink 2.2 job from the StarRocks connector release cycle.
 CREATE TABLE IF NOT EXISTS starrocks_realtime_metric_kafka (
   window_start TIMESTAMP(3),
   advertiser_id STRING,
@@ -66,99 +68,6 @@ CREATE TABLE IF NOT EXISTS starrocks_realtime_metric_kafka (
   'value.format' = 'json',
   'value.json.timestamp-format.standard' = 'SQL',
   'value.fields-include' = 'ALL'
-);
-
-CREATE TABLE IF NOT EXISTS mysql_advertiser (
-  advertiser_id STRING,
-  advertiser_name STRING,
-  industry STRING,
-  tier STRING,
-  home_region STRING,
-  signup_date DATE,
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (advertiser_id) NOT ENFORCED
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:mysql://mysql:3306/ad_ods',
-  'username' = 'root',
-  'password' = 'root',
-  'table-name' = 'advertiser',
-  'driver' = 'com.mysql.cj.jdbc.Driver'
-);
-
-CREATE TABLE IF NOT EXISTS mysql_campaign (
-  campaign_id STRING,
-  advertiser_id STRING,
-  campaign_name STRING,
-  objective STRING,
-  budget DECIMAL(18,2),
-  status STRING,
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (campaign_id) NOT ENFORCED
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:mysql://mysql:3306/ad_ods',
-  'username' = 'root',
-  'password' = 'root',
-  'table-name' = 'campaign',
-  'driver' = 'com.mysql.cj.jdbc.Driver'
-);
-
-CREATE TABLE IF NOT EXISTS mysql_creative (
-  creative_id STRING,
-  campaign_id STRING,
-  unit_id STRING,
-  creative_name STRING,
-  format STRING,
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (creative_id) NOT ENFORCED
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:mysql://mysql:3306/ad_ods',
-  'username' = 'root',
-  'password' = 'root',
-  'table-name' = 'creative',
-  'driver' = 'com.mysql.cj.jdbc.Driver'
-);
-
-CREATE TABLE IF NOT EXISTS mysql_unit (
-  unit_id STRING,
-  campaign_id STRING,
-  unit_name STRING,
-  bid_type STRING,
-  bid_amount DECIMAL(18,4),
-  status STRING,
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (unit_id) NOT ENFORCED
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:mysql://mysql:3306/ad_ods',
-  'username' = 'root',
-  'password' = 'root',
-  'table-name' = 'unit',
-  'driver' = 'com.mysql.cj.jdbc.Driver'
-);
-
-CREATE TABLE IF NOT EXISTS mysql_order (
-  order_id STRING,
-  advertiser_id STRING,
-  creative_id STRING,
-  user_id STRING,
-  gmv DECIMAL(18,2),
-  order_status STRING,
-  create_time TIMESTAMP(3),
-  payment_time TIMESTAMP(3),
-  refund_time TIMESTAMP(3),
-  finish_time TIMESTAMP(3),
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (order_id) NOT ENFORCED
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:mysql://mysql:3306/ad_ods',
-  'username' = 'root',
-  'password' = 'root',
-  'table-name' = 'ad_order',
-  'driver' = 'com.mysql.cj.jdbc.Driver'
 );
 
 USE CATALOG paimon;

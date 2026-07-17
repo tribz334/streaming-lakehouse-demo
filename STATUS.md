@@ -1,6 +1,6 @@
 # Real Stack Status
 
-Last verified: 2026-07-17 01:14 Asia/Shanghai.
+Last verified: 2026-07-17 12:32 Asia/Shanghai.
 
 ## Verified Running
 
@@ -8,8 +8,9 @@ Last verified: 2026-07-17 01:14 Asia/Shanghai.
 - `core` profile is running:
   - MySQL 8.4 with binlog enabled
   - Apache Kafka 3.9.1
-  - Flink 2.0.2 JobManager/TaskManager
-  - Paimon connector in the Flink image
+  - Flink 2.2.0 JobManager/TaskManager
+  - Paimon Flink 2.2 connector 1.4.2
+  - Flink CDC 3.6.0-2.2 snapshot + binlog pipeline
   - event generator writing Kafka `ods_log`
 - Flink DDL created source tables and Paimon ODS/DIM/DWD/DWS/ADS tables.
 - The operational chain includes persistent ODS, DWD, 10-second DWS, Kafka relay, and themed DWS jobs.
@@ -50,7 +51,11 @@ dws_ad_metric_stream_10s         continuously updated by Flink
 ads_advertiser_retention_di          1
 ads_attribution_summary_di          14
 ads_fraud_signal_di                 refreshed by batch workflow
-dim_advertiser_df                   12
+dim_advertiser_df                   39
+dim_campaign_df                     59
+dim_unit_df                         76
+dim_creative_df                     83
+ods_ad_order                      1019
 ```
 
 ## Latest StarRocks View Counts
@@ -65,8 +70,8 @@ v_fraud_signal_summary         12
 
 ## Compatibility Notes
 
-- The thesis text says Flink 2.0 + Paimon 1.0. Maven's Flink 2.0 bridge is available as `paimon-flink-2.0` from Paimon 1.1.x, so the runnable image uses `paimon-flink-2.0:1.1.1`.
-- The initially tested `flink-sql-connector-mysql-cdc:3.5.0` failed on Flink 2.0.2 with `SourceFunction` compatibility. The runnable core path therefore uses Flink JDBC 4.0 for dimension bootstrap and keeps a CDC YAML sketch in `flink-cdc/mysql-to-paimon.yaml`.
+- The runnable version set is Flink 2.2.0, Flink CDC 3.6.0-2.2, Paimon Flink 2.2 bridge 1.4.2, and Kafka connector 5.0.0-2.2.
+- `flink-cdc/mysql-to-paimon.yaml` is now a submitted persistent job. Full snapshot counts and insert/update/delete binlog propagation were verified on 2026-07-17.
 - The real-time StarRocks path does not depend on Paimon External Catalog compatibility: Flink upsert-kafka and StarRocks Routine Load continuously serve `dws_ad_metric_stream_10s`. External Catalog remains available for compatibility experiments, and offline ADS still use snapshots.
 - Fraud thresholds in `12_ads_fraud.sql` are calibrated for the local generator's injected fraud bursts. They are meant to demonstrate the rule pipeline, not to be production thresholds.
 - Long-running Paimon stream readers can hit expired snapshots if an old job resumes from an expired checkpoint. The DWD job uses `scan.mode = latest` for the ODS source, and the current bad-state job was canceled/re-submitted.
@@ -77,5 +82,5 @@ v_fraud_signal_summary         12
 - Grafana/Loki/Alloy runtime was validated on 2026-07-15. Alloy discovers the `ustc_lakehouse` Compose containers through the Docker API, Loki exposes the expected service/node/role labels, and Grafana reports the Loki data source as healthy.
 - DolphinScheduler standalone runtime validation is still pending because the Docker image pull was interrupted by the same Docker Hub TLS timeout. Run-history JSON, scheduler dashboard, and the YAML workflow template are present as fallback artifacts.
 - DataHub is not yet implemented as a running local profile; an offline DataHub-style metadata export and MCP-style JSONL export are present, and a real ingestion target can be added when a DataHub service is available.
-- Strict MySQL CDC execution remains a compatibility item. The current demo keeps the CDC YAML sketch and uses JDBC bootstrap for a stable Flink 2.0.2 path.
+- Apicurio currently governs the Kafka `ods_log` JSON schema; it is not yet an inline serializer/validator for the direct MySQL-to-Paimon CDC path.
 - Direct StarRocks-to-Paimon querying should be retested with a newer StarRocks image when Docker Hub access is stable.

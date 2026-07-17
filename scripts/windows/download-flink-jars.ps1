@@ -5,16 +5,32 @@ New-Item -ItemType Directory -Force -Path $lib | Out-Null
 
 $jars = @(
   @{
-    Name = "paimon-flink-2.0.jar"
-    Url = "https://repo1.maven.org/maven2/org/apache/paimon/paimon-flink-2.0/1.1.1/paimon-flink-2.0-1.1.1.jar"
+    Name = "paimon-flink-2.2.jar"
+    Url = "https://repo1.maven.org/maven2/org/apache/paimon/paimon-flink-2.2/1.4.2/paimon-flink-2.2-1.4.2.jar"
   },
   @{
-    Name = "flink-sql-connector-kafka.jar"
-    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/4.0.1-2.0/flink-sql-connector-kafka-4.0.1-2.0.jar"
+    Name = "hive-apache-1.2.2-2.jar"
+    Url = "https://repo1.maven.org/maven2/com/facebook/presto/hive/hive-apache/1.2.2-2/hive-apache-1.2.2-2.jar"
   },
   @{
-    Name = "flink-sql-connector-mysql-cdc.jar"
-    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-mysql-cdc/3.5.0/flink-sql-connector-mysql-cdc-3.5.0.jar"
+    Name = "flink-sql-connector-kafka-5.0.0-2.2.jar"
+    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/5.0.0-2.2/flink-sql-connector-kafka-5.0.0-2.2.jar"
+  },
+  @{
+    Name = "flink-sql-connector-mysql-cdc-3.6.0-2.2.jar"
+    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-mysql-cdc/3.6.0-2.2/flink-sql-connector-mysql-cdc-3.6.0-2.2.jar"
+  },
+  @{
+    Name = "flink-cdc-pipeline-connector-mysql-3.6.0-2.2.jar"
+    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-cdc-pipeline-connector-mysql/3.6.0-2.2/flink-cdc-pipeline-connector-mysql-3.6.0-2.2.jar"
+  },
+  @{
+    Name = "flink-cdc-pipeline-connector-paimon-3.6.0-2.2.jar"
+    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-cdc-pipeline-connector-paimon/3.6.0-2.2/flink-cdc-pipeline-connector-paimon-3.6.0-2.2.jar"
+  },
+  @{
+    Name = "flink-cdc-3.6.0-2.2-bin.tar.gz"
+    Url = "https://downloads.apache.org/flink/flink-cdc-3.6.0/flink-cdc-3.6.0-2.2-bin.tar.gz"
   },
   @{
     Name = "mysql-connector-j.jar"
@@ -23,14 +39,6 @@ $jars = @(
   @{
     Name = "flink-shaded-hadoop-2-uber.jar"
     Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-shaded-hadoop-2-uber/2.8.3-10.0/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar"
-  },
-  @{
-    Name = "flink-connector-jdbc-core.jar"
-    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc-core/4.0.0-2.0/flink-connector-jdbc-core-4.0.0-2.0.jar"
-  },
-  @{
-    Name = "flink-connector-jdbc-mysql.jar"
-    Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc-mysql/4.0.0-2.0/flink-connector-jdbc-mysql-4.0.0-2.0.jar"
   }
 )
 

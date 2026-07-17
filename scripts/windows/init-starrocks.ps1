@@ -10,7 +10,7 @@ $multiBrokerCount = @(docker ps `
   -q).Count
 $relayReplicationFactor = if ($multiBrokerCount -ge 3) { 3 } else { 1 }
 
-docker compose --profile core exec -T kafka-node-1 /opt/kafka/bin/kafka-topics.sh `
+docker compose exec -T kafka-node-1 /opt/kafka/bin/kafka-topics.sh `
   --bootstrap-server kafka-node-1:9092 `
   --create --if-not-exists `
   --topic dws_ad_metric_stream_10s_sr `

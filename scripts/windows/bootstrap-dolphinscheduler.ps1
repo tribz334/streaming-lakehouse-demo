@@ -278,6 +278,12 @@ docker exec "$JM" bash -lc "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sq
 docker exec "$JM" bash -lc "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sql/01_model_tables.sql"
 '@
 
+$verifyCdcDimensions = @'
+set -euo pipefail
+overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
+printf '%s' "$overview" | jq -e '.jobs[] | select(.name == "mysql-cdc-to-paimon" and .state == "RUNNING")' >/dev/null
+'@
+
 $offlineReceipt = @'
 set -euo pipefail
 code=$(curl -sS -o /dev/null -w '%{http_code}' http://starrocks:8030/)
@@ -290,7 +296,7 @@ cat /workspace/dolphinscheduler/runs/offline-workflow-execution.txt
 $offlineTasks = @(
   (New-TaskSpec "prepare_catalogs" "Initialize Flink/Paimon catalogs and thesis tables" $prepareCatalogs 80 220),
   (New-TaskSpec "ods_snapshot_check" "Validate the bounded latest ODS Paimon snapshot" (New-BatchSqlCommand "06_offline_ods_check.sql") 300 100),
-  (New-TaskSpec "dim_snapshot_refresh" "Refresh DIM tables and order lifecycle from MySQL in batch mode" (New-BatchSqlCommand "07_offline_dim_snapshot.sql") 300 340),
+  (New-TaskSpec "verify_cdc_dimensions" "Verify that MySQL CDC continuously maintains DIM tables" $verifyCdcDimensions 300 340),
   (New-TaskSpec "dws_theme_load" "Build the streamlined offline DWS layer" (New-BatchSqlCommand "08_offline_dws.sql") 820 220),
   (New-TaskSpec "dm_layer_load" "Build attribution and anti-fraud DM features" (New-BatchSqlCommand "09_offline_dm.sql") 1080 340),
   (New-TaskSpec "ads_retention" "Calculate advertiser retention ADS" (New-BatchSqlCommand "10_ads_retention.sql") 1320 60),
@@ -301,12 +307,12 @@ $offlineTasks = @(
 )
 $offlineEdges = @(
   [ordered]@{ from = "prepare_catalogs"; to = "ods_snapshot_check" },
-  [ordered]@{ from = "prepare_catalogs"; to = "dim_snapshot_refresh" },
+  [ordered]@{ from = "prepare_catalogs"; to = "verify_cdc_dimensions" },
   [ordered]@{ from = "ods_snapshot_check"; to = "dws_theme_load" },
-  [ordered]@{ from = "dim_snapshot_refresh"; to = "dws_theme_load" },
+  [ordered]@{ from = "verify_cdc_dimensions"; to = "dws_theme_load" },
   [ordered]@{ from = "dws_theme_load"; to = "dm_layer_load" },
   [ordered]@{ from = "ods_snapshot_check"; to = "ads_retention" },
-  [ordered]@{ from = "dim_snapshot_refresh"; to = "ads_retention" },
+  [ordered]@{ from = "verify_cdc_dimensions"; to = "ads_retention" },
   [ordered]@{ from = "dm_layer_load"; to = "ads_attribution" },
   [ordered]@{ from = "dm_layer_load"; to = "ads_antifraud" },
   [ordered]@{ from = "dws_theme_load"; to = "ads_creative_offline" },
@@ -331,7 +337,7 @@ set -euo pipefail
 sleep 10
 overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
 running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING")] | length')
-test "$running" -ge 4
+test "$running" -ge 5
 mkdir -p /workspace/dolphinscheduler/runs
 printf 'realtime workflow completed at %s; running_jobs=%s\n' "$(date -Iseconds)" "$running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
 cat /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
@@ -345,22 +351,37 @@ docker exec "$KAFKA" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost
 docker exec "$KAFKA" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic dws_ad_metric_stream_10s_sr --partitions 3 --replication-factor 1
 '@
 
+$startMysqlCdc = @'
+set -euo pipefail
+JM="$(docker ps --filter label=com.docker.compose.project=ustc_lakehouse --filter label=com.docker.compose.service=flink-jobmanager -q | head -n1)"
+test -n "$JM"
+docker exec -d "$JM" bash -lc "nohup /opt/flink-cdc/bin/flink-cdc.sh /opt/flink-cdc/pipelines/mysql-to-paimon.yaml --flink-home /opt/flink -t remote -Drest.address=flink-jobmanager -Drest.port=8081 >/tmp/mysql-cdc-to-paimon.log 2>&1 &"
+for i in $(seq 1 40); do
+  if curl -fsS http://flink-jobmanager:8081/jobs/overview | jq -e '.jobs[] | select(.name == "mysql-cdc-to-paimon" and .state == "RUNNING")' >/dev/null; then
+    exit 0
+  fi
+  sleep 3
+done
+docker exec "$JM" bash -lc "tail -n 120 /tmp/mysql-cdc-to-paimon.log"
+exit 1
+'@
+
 $realtimeTasks = @(
   (New-TaskSpec "stop_existing_stream_jobs" "Stop current streaming jobs for release or schema evolution" $stopRealtimeJobs 100 220),
   (New-TaskSpec "prepare_realtime_resources" "Ensure the Kafka ODS topic exists before starting ingestion" $prepareRealtimeResources 320 220),
   (New-TaskSpec "start_ods_stream" "Start Kafka-to-Paimon ODS streaming ingestion" (New-StreamingSqlCommand "02_realtime_ods.sql") 560 100),
-  (New-TaskSpec "refresh_dim_snapshot" "Refresh the bounded MySQL DIM snapshot used by the real-time chain" (New-BatchSqlCommand "07_offline_dim_snapshot.sql") 560 340),
+  (New-TaskSpec "start_mysql_cdc" "Start MySQL snapshot and binlog synchronization into Paimon" $startMysqlCdc 560 340),
   (New-TaskSpec "start_dwd_stream" "Start ODS-to-DWD streaming enrichment" (New-StreamingSqlCommand "03_realtime_dwd.sql") 820 220),
   (New-TaskSpec "start_dws_metric_stream" "Start ten-second operational DWS aggregation" (New-StreamingSqlCommand "04_realtime_dws_metrics.sql") 1080 220),
   (New-TaskSpec "start_starrocks_metric_relay" "Continuously relay the operational DWS changelog to StarRocks" (New-StreamingSqlCommand "05_realtime_starrocks_relay.sql") 1340 220),
-  (New-TaskSpec "verify_realtime_jobs" "Verify all four persistent real-time jobs and write the receipt" $verifyRealtimeJobs 1600 220)
+  (New-TaskSpec "verify_realtime_jobs" "Verify CDC and four persistent real-time jobs and write the receipt" $verifyRealtimeJobs 1600 220)
 )
 $realtimeEdges = @(
   [ordered]@{ from = "stop_existing_stream_jobs"; to = "prepare_realtime_resources" },
   [ordered]@{ from = "prepare_realtime_resources"; to = "start_ods_stream" },
-  [ordered]@{ from = "prepare_realtime_resources"; to = "refresh_dim_snapshot" },
+  [ordered]@{ from = "prepare_realtime_resources"; to = "start_mysql_cdc" },
   [ordered]@{ from = "start_ods_stream"; to = "start_dwd_stream" },
-  [ordered]@{ from = "refresh_dim_snapshot"; to = "start_dwd_stream" },
+  [ordered]@{ from = "start_mysql_cdc"; to = "start_dwd_stream" },
   [ordered]@{ from = "start_dwd_stream"; to = "start_dws_metric_stream" },
   [ordered]@{ from = "start_dws_metric_stream"; to = "start_starrocks_metric_relay" },
   [ordered]@{ from = "start_starrocks_metric_relay"; to = "verify_realtime_jobs" }

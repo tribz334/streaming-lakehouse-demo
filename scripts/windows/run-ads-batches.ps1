@@ -15,7 +15,7 @@ $jobs = @(
 foreach ($job in $jobs) {
   Write-Host "Running $job ..."
   $runFile = "/tmp/run_$job"
-  $output = docker compose --profile core exec -T flink-jobmanager /bin/bash -lc `
+  $output = docker compose exec -T flink-jobmanager /bin/bash -lc `
     "cat /opt/flink/usrlib/sql/00_catalogs_and_tables.sql /opt/flink/usrlib/sql/01_model_tables.sql /opt/flink/usrlib/sql/$job > $runFile && /opt/flink/bin/sql-client.sh -f $runFile" 2>&1
   if ($LASTEXITCODE -ne 0 -or $output -match "\[ERROR\]") {
     $output

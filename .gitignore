@@ -13,6 +13,7 @@ Thumbs.db
 
 # Downloaded runtime dependencies are restored by scripts/download-flink-jars.*
 flink/lib/*.jar
+flink/lib/*.tar.gz
 
 # Local runtime data and generated caches
 data/*.db

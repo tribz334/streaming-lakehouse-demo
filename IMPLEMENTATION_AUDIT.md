@@ -8,8 +8,9 @@
 | --- | --- | --- |
 | Kafka 埋点事件接入 | 事件生成器持续写入 `ods_log` | `generator/produce_events.py`、Kafka 容器 |
 | MySQL 业务数据源 | 广告主、计划、创意、订单数据 | `mysql/init`、MySQL 容器 |
+| Flink CDC 业务库同步 | Flink CDC 3.6 完成全量快照并持续消费 binlog，维护广告主、计划、单元、创意和订单 Paimon 表 | `flink-cdc/mysql-to-paimon.yaml`、`submit-cdc-pipeline.ps1` |
 | Paimon 湖仓分层 | 共享 ODS/DWD/DIM，实时 DWS 收敛，离线扩展 DWS/DM/ADS | `00_catalogs_and_tables.sql`、`01_model_tables.sql` |
-| 单机三逻辑节点 | 3 Kafka Broker、3 Flink TM、3 采集实例，可选 3 StarRocks BE | `docker-compose.three-node.yml` |
+| 单机精简拓扑 | 1 Kafka Broker、1 Flink TM、1 采集实例，可选 1 StarRocks FE + 1 BE | `docker-compose.yml` |
 | Flink 流批处理 | ODS/DWD 长期流任务，DWS/ADS 有界批刷新 | `scripts/windows/*.ps1`、`scripts/linux/*.sh` |
 | 订单生命周期 | Paimon partial-update 主键表 | `dwd_order_lifecycle_df` |
 | 核心广告指标 | 10 秒流表经 Kafka Routine Load 持续服务 | `dws_ad_metric_stream_10s`、Routine Load |
@@ -19,6 +20,7 @@
 | StarRocks OLAP | 实时 DWS 经 Kafka Routine Load Upsert；离线 ADS 使用快照 | `05_realtime_starrocks_relay.sql`、`init_starrocks.sql`、`sync-starrocks-olap.ps1` |
 | Superset 接入 | 注册实时、离线、留存、归因和反作弊数据集并自动生成专题看板 | `superset/bootstrap_datasets.py`、`superset/bootstrap_*dashboard.py` |
 | Prometheus | Flink 指标采集和 targets API | `prometheus/prometheus.yml` |
+| Hive Metastore | Paimon Flink SQL Catalog 与 Flink CDC Sink 共享 HMS 元数据后端 | `docker-compose.yml`、`00_catalogs_and_tables.sql`、`mysql-to-paimon.yaml` |
 | 元数据与血缘导出 | DataHub 风格 JSON 和 MCP-style JSONL | `datahub/metadata`、`datahub/mcp` |
 | 本地工作流 | 批刷新、同步、治理、验证和运行历史 | `scripts/windows/init-flink-ddl.ps1`、`run-ads-batches.ps1`、`sync-starrocks-olap.ps1` |
 | 归因增强 | 30 天 LastClick；30 分钟直归、1/3/7/30 日间归、自然订单互斥分桶；订单级下钻 | `11_ads_attribution.sql` |
@@ -28,8 +30,7 @@
 
 | 论文能力 | 当前差异 |
 | --- | --- |
-| Flink CDC 3.x 整库同步 | MySQL 已开启 binlog，也保留 CDC YAML；可运行主链路使用 JDBC 维表装载，未完成严格全量快照转增量 CDC 验证。 |
-| HDFS + Hive Metastore | Hive Metastore 已运行；Paimon 数据使用 Docker volume 文件系统，不是三节点 HDFS。 |
+| HDFS + Hive Metastore | Hive Metastore 已接入 Paimon 主链路；数据文件仍使用 Docker volume 文件系统，不是 HDFS。 |
 | StarRocks External Catalog 直读 Paimon | Catalog 兼容性仍受版本限制；实时服务已改为 Flink upsert-kafka + Routine Load，离线 ADS 使用内部快照。 |
 | Superset BI 应用 | 已生成实时、离线、留存、广告归因和广告反作弊五类独立看板；订阅告警和面向终端用户的独立 BI 门户尚未实现。 |
 | DolphinScheduler | 提供 YAML 模板、本地 runner、运行历史和 HTML 看板；不是真实 DolphinScheduler 服务。 |

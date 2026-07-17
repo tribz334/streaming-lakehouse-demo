@@ -114,7 +114,7 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 | `dim_slot_df` | 一个广告位 | 尚无独立源表 | 论文媒体广告位扩展预留 | 空表 |
 | `dim_user_df` | 一个用户 | 尚无独立源表 | 论文用户画像扩展预留 | 空表 |
 
-前四张表由 `flink/sql/07_offline_dim_snapshot.sql` 刷新。后五张只在 `flink/sql/01_model_tables.sql` 建了表，没有任何 `INSERT INTO`，所以“看得见表”但“没有产出逻辑”。
+前四张表由 `flink-cdc/mysql-to-paimon.yaml` 在完成 MySQL 全量快照后持续消费 binlog 更新；`flink/sql/07_offline_dim_snapshot.sql` 仅保留为迁移说明，不再执行 JDBC 刷新。后五张只在 `flink/sql/01_model_tables.sql` 建了表，没有任何 `INSERT INTO`，所以“看得见表”但“没有产出逻辑”。
 
 ## 6. DWD：明细事实层
 

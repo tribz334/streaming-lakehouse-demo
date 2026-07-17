@@ -1,7 +1,5 @@
-# Flink CDC YAML pipeline sketch for the thesis architecture.
-# Keep this alongside the runnable Flink SQL path. The current running stack
-# uses Flink JDBC for dimension bootstrap because the available SQL CDC jar
-# is not compatible with Flink 2.0.2 in this local image.
+# Runnable Flink CDC 3.6 pipeline for Flink 2.2.
+# It performs an initial snapshot and then continuously consumes MySQL binlog.
 
 source:
   type: mysql
@@ -9,18 +7,33 @@ source:
   port: 3306
   username: root
   password: root
-  tables: ad_ods.advertiser,ad_ods.campaign,ad_ods.creative,ad_ods.ad_order
-  server-id: 5401-5404
-  server-time-zone: Asia/Shanghai
+  tables: ad_ods.advertiser,ad_ods.campaign,ad_ods.unit,ad_ods.creative,ad_ods.ad_order
+  server-id: 5401-5408
+  # The MySQL container runs in UTC; pipeline output remains Asia/Shanghai.
+  server-time-zone: UTC
 
 sink:
   type: paimon
   catalog.properties.warehouse: file:///warehouse/paimon
-  catalog.properties.metastore: filesystem
-  database: ad_dw
-  table-name: ods_${tableName}
+  catalog.properties.metastore: hive
+  catalog.properties.uri: thrift://hive-metastore:9083
+  table.properties.bucket: 4
+  table.properties.merge-engine: deduplicate
+
+route:
+  - source-table: ad_ods.advertiser
+    sink-table: ad_dw.dim_advertiser_df
+  - source-table: ad_ods.campaign
+    sink-table: ad_dw.dim_campaign_df
+  - source-table: ad_ods.unit
+    sink-table: ad_dw.dim_unit_df
+  - source-table: ad_ods.creative
+    sink-table: ad_dw.dim_creative_df
+  - source-table: ad_ods.ad_order
+    sink-table: ad_dw.ods_ad_order
 
 pipeline:
   name: mysql-cdc-to-paimon
   parallelism: 1
-
+  local-time-zone: Asia/Shanghai
+  schema.change.behavior: evolve

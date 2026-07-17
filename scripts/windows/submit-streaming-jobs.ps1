@@ -13,7 +13,7 @@ foreach ($job in $jobs) {
   $log = "/tmp/$job.log"
   $runFile = "/tmp/run_$job"
   $cmd = "cat /opt/flink/usrlib/sql/00_catalogs_and_tables.sql /opt/flink/usrlib/sql/$job > $runFile && nohup /opt/flink/bin/sql-client.sh -f $runFile > $log 2>&1 &"
-  docker compose --profile core exec -d flink-jobmanager /bin/bash -lc $cmd
+  docker compose exec -d flink-jobmanager /bin/bash -lc $cmd
   Write-Host "Submitted $job; log inside flink-jobmanager:$log"
 }
 

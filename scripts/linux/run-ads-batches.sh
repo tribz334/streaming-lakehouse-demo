@@ -13,7 +13,7 @@ for job in \
   13_ads_creative_offline.sql; do
   echo "Running ${job}..."
   run_file="/tmp/run_${job}"
-  docker compose --profile core exec -T flink-jobmanager /bin/bash -lc \
+  docker compose exec -T flink-jobmanager /bin/bash -lc \
     "cat /opt/flink/usrlib/sql/00_catalogs_and_tables.sql /opt/flink/usrlib/sql/01_model_tables.sql /opt/flink/usrlib/sql/${job} > ${run_file} && /opt/flink/bin/sql-client.sh -f ${run_file}"
 done
 

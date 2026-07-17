@@ -13,14 +13,13 @@ workflows:
         type: FLINK_SQL_BATCH
         sql: flink/sql/06_offline_ods_check.sql
         depends_on: [prepare_catalogs]
-      - name: dim_snapshot_refresh
-        type: FLINK_SQL_BATCH
-        sql: flink/sql/07_offline_dim_snapshot.sql
+      - name: verify_cdc_dimensions
+        type: FLINK_REST
         depends_on: [prepare_catalogs]
       - name: dws_theme_load
         type: FLINK_SQL_BATCH
         sql: flink/sql/08_offline_dws.sql
-        depends_on: [ods_snapshot_check, dim_snapshot_refresh]
+        depends_on: [ods_snapshot_check, verify_cdc_dimensions]
       - name: dm_layer_load
         type: FLINK_SQL_BATCH
         sql: flink/sql/09_offline_dm.sql
@@ -28,7 +27,7 @@ workflows:
       - name: ads_retention
         type: FLINK_SQL_BATCH
         sql: flink/sql/10_ads_retention.sql
-        depends_on: [ods_snapshot_check, dim_snapshot_refresh]
+        depends_on: [ods_snapshot_check, verify_cdc_dimensions]
       - name: ads_attribution
         type: FLINK_SQL_BATCH
         sql: flink/sql/11_ads_attribution.sql
@@ -58,14 +57,14 @@ workflows:
         type: FLINK_SQL_STREAM
         sql: flink/sql/02_realtime_ods.sql
         depends_on: [prepare_realtime_resources]
-      - name: refresh_dim_snapshot
-        type: FLINK_SQL_BATCH
-        sql: flink/sql/07_offline_dim_snapshot.sql
+      - name: start_mysql_cdc
+        type: FLINK_CDC_PIPELINE
+        yaml: flink-cdc/mysql-to-paimon.yaml
         depends_on: [prepare_realtime_resources]
       - name: start_dwd_stream
         type: FLINK_SQL_STREAM
         sql: flink/sql/03_realtime_dwd.sql
-        depends_on: [start_ods_stream, refresh_dim_snapshot]
+        depends_on: [start_ods_stream, start_mysql_cdc]
       - name: start_dws_metric_stream
         type: FLINK_SQL_STREAM
         sql: flink/sql/04_realtime_dws_metrics.sql

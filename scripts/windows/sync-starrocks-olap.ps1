@@ -26,14 +26,14 @@ $Query
   try {
     Set-Content -Path $tempFile -Value $sql -Encoding UTF8
     docker cp $tempFile "ustc_lakehouse-flink-jobmanager-1:$containerFile" | Out-Null
-    $output = @(docker compose --profile core exec -T flink-jobmanager /opt/flink/bin/sql-client.sh -f $containerFile 2>&1)
+    $output = @(docker compose exec -T flink-jobmanager /opt/flink/bin/sql-client.sh -f $containerFile 2>&1)
     if ($LASTEXITCODE -ne 0 -or $output -match "\[ERROR\]") {
       $output
       throw "Flink export query failed."
     }
     return $output
   } finally {
-    docker compose --profile core exec -T flink-jobmanager rm -f $containerFile 2>$null
+    docker compose exec -T flink-jobmanager rm -f $containerFile 2>$null
     Remove-Item -Path $tempFile -ErrorAction SilentlyContinue
   }
 }

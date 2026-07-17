@@ -12,19 +12,25 @@ try {
 }
 
 Write-Host "Compose multi-node services:"
-$compose = @("compose", "-f", "docker-compose.yml", "-f", "docker-compose.three-node.yml")
-& docker @compose --profile core --profile multi-node ps `
+$compose = @("compose")
+& docker @compose ps `
   mysql `
   kafka-node-1 `
-  kafka-node-2 `
-  kafka-node-3 `
+  hive-metastore `
   flink-jobmanager `
   flink-taskmanager-node-1 `
-  flink-taskmanager-node-2 `
-  flink-taskmanager-node-3 `
-  event-generator-node-1 `
-  event-generator-node-2 `
-  event-generator-node-3
+  event-generator-node-1
+
+$hmsContainer = & docker compose ps -q hive-metastore
+$hmsHealth = if ([string]::IsNullOrWhiteSpace($hmsContainer)) {
+  "missing"
+} else {
+  & docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}" $hmsContainer
+}
+if ($LASTEXITCODE -ne 0 -or $hmsHealth -ne "healthy") {
+  throw "Hive Metastore is not healthy: $hmsHealth"
+}
+Write-Host "Hive Metastore thrift service is healthy on localhost:19083."
 
 Write-Host ""
 Write-Host "Flink cluster overview:"
@@ -41,9 +47,20 @@ try {
     Select-Object id, path, slotsNumber, freeSlots |
     Format-Table -AutoSize
 
-  if ([int]$overview.taskmanagers -lt 3) {
-    throw "Expected at least 3 Flink TaskManagers, got $($overview.taskmanagers)."
+  if ([int]$overview.taskmanagers -ne 1) {
+    throw "Expected exactly 1 Flink TaskManager, got $($overview.taskmanagers)."
   }
+  if ($overview.'flink-version' -ne "2.2.0") {
+    throw "Expected Flink 2.2.0, got $($overview.'flink-version')."
+  }
+  $jobs = Invoke-RestMethod -Uri "http://127.0.0.1:8082/jobs/overview" -TimeoutSec 10
+  $cdc = @($jobs.jobs | Where-Object {
+    $_.name -eq "mysql-cdc-to-paimon" -and $_.state -eq "RUNNING"
+  })
+  if ($cdc.Count -ne 1) {
+    throw "Expected exactly one running mysql-cdc-to-paimon job, got $($cdc.Count)."
+  }
+  Write-Host "Flink 2.2.0 and MySQL CDC pipeline are running."
 } catch {
   Write-Warning "Flink multi-node verification failed: $($_.Exception.Message)"
   throw
@@ -51,30 +68,39 @@ try {
 
 Write-Host ""
 Write-Host "Kafka topic status:"
-& docker @compose --profile core --profile multi-node exec -T kafka-node-1 /opt/kafka/bin/kafka-topics.sh `
+& docker @compose exec -T kafka-node-1 /opt/kafka/bin/kafka-topics.sh `
   --bootstrap-server kafka-node-1:9092 `
   --describe `
   --topic ods_log
 
-$topicDescription = & docker @compose --profile core --profile multi-node exec -T kafka-node-1 `
+$topicDescription = & docker @compose exec -T kafka-node-1 `
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --describe --topic ods_log
-if (($topicDescription -join "`n") -notmatch "ReplicationFactor:\s*3") {
-  throw "Expected ods_log replication factor 3."
+if (($topicDescription -join "`n") -notmatch "ReplicationFactor:\s*1") {
+  throw "Expected ods_log replication factor 1."
 }
 $partitionLines = @($topicDescription | Where-Object { $_ -match "Partition:" })
 if ($partitionLines.Count -lt 6) {
   throw "Expected at least 6 ods_log partitions, got $($partitionLines.Count)."
 }
 
-$relayTopicDescription = & docker @compose --profile core --profile multi-node exec -T kafka-node-1 `
+$relayTopicDescription = & docker @compose exec -T kafka-node-1 `
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --describe --topic dws_ad_metric_stream_10s_sr
-if (($relayTopicDescription -join "`n") -notmatch "ReplicationFactor:\s*3") {
-  Write-Warning "The existing relay topic has fewer than 3 replicas. Recreate or reassign this legacy topic before a Kafka fault-injection test."
+if (($relayTopicDescription -join "`n") -notmatch "ReplicationFactor:\s*1") {
+  throw "Expected relay topic replication factor 1."
 }
 
 $starrocksContainer = & docker @compose --profile olap ps -q starrocks
 if (-not [string]::IsNullOrWhiteSpace($starrocksContainer)) {
   Write-Host ""
+  Write-Host "StarRocks topology:"
+  $backends = @(& docker @compose --profile olap exec -T starrocks bash -lc `
+    "mysql -N -h127.0.0.1 -P9030 -uroot -e 'SHOW BACKENDS'")
+  $backendRows = @($backends | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  if ($backendRows.Count -ne 1) {
+    throw "Expected exactly 1 StarRocks BE, got $($backendRows.Count)."
+  }
+  Write-Host "Frontends=1, Backends=1"
+
   Write-Host "StarRocks real-time metric load:"
   $routineLoad = & docker @compose --profile olap exec -T starrocks bash -lc `
     "mysql -N -h127.0.0.1 -P9030 -uroot -e 'SHOW ROUTINE LOAD FOR ad_ads.sync_dws_ad_metric_stream_10s'"
@@ -87,9 +113,9 @@ if (-not [string]::IsNullOrWhiteSpace($starrocksContainer)) {
 
 Write-Host ""
 Write-Host "Producer node logs:"
-foreach ($service in @("event-generator-node-1", "event-generator-node-2", "event-generator-node-3")) {
+foreach ($service in @("event-generator-node-1")) {
   Write-Host "[$service]"
-  & docker @compose --profile core --profile multi-node logs --tail 8 $service
+  & docker @compose logs --tail 8 $service
 }
 
 Write-Host ""

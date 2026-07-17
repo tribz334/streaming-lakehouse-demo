@@ -1,7 +1,10 @@
 services:
   mysql:
     image: mysql:8.4
-    profiles: ["core"]
+    hostname: node-1-mysql
+    labels:
+      thesis.node: node-1
+      thesis.role: source-control
     command:
       - --server-id=1
       - --log-bin=mysql-bin
@@ -27,8 +30,12 @@ services:
 
   kafka-node-1:
     image: apache/kafka:3.9.1
-    profiles: ["core"]
+    hostname: kafka-node-1
+    labels:
+      thesis.node: node-1
+      thesis.role: kafka-broker-controller
     environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
@@ -39,17 +46,38 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     ports:
       - "29092:29092"
     volumes:
-      - kafka-data:/var/lib/kafka/data
+      - kafka-node-1-data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 20
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka-node-1:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -lc
+      - >-
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092
+        --create --if-not-exists --topic ods_log --partitions 6
+        --replication-factor 1 --config min.insync.replicas=1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092
+        --create --if-not-exists --topic dws_ad_metric_stream_10s_sr --partitions 3
+        --replication-factor 1 --config min.insync.replicas=1
+    labels:
+      thesis.node: node-1
+      thesis.role: cluster-bootstrap
 
   apicurio:
     image: apicurio/apicurio-registry:3.2.5
@@ -69,12 +97,16 @@ services:
         FLINK_CDC_VERSION: ${FLINK_CDC_VERSION}
         MYSQL_CONNECTOR_VERSION: ${MYSQL_CONNECTOR_VERSION}
     image: ${FLINK_IMAGE}
-    profiles: ["core"]
+    hostname: node-1-flink-jobmanager
+    labels:
+      thesis.node: node-1
+      thesis.role: flink-control
     command: jobmanager
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         parallelism.default: 1
+        classloader.resolve-order: parent-first
         execution.checkpointing.interval: 10s
         state.backend.type: hashmap
         state.checkpoint-storage: filesystem
@@ -88,17 +120,22 @@ services:
     volumes:
       - warehouse:/warehouse
       - ./flink/sql:/opt/flink/usrlib/sql:ro
+      - ./flink-cdc:/opt/flink-cdc/pipelines:ro
     depends_on:
-      kafka-node-1:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       mysql:
+        condition: service_healthy
+      hive-metastore:
         condition: service_healthy
 
   flink-taskmanager-node-1:
     image: ${FLINK_IMAGE}
     pull_policy: never
-    profiles: ["core"]
-    hostname: flink-taskmanager-node-1
+    hostname: node-1-flink-taskmanager
+    labels:
+      thesis.node: node-1
+      thesis.role: flink-compute
     command: taskmanager
     environment:
       FLINK_PROPERTIES: |
@@ -109,58 +146,7 @@ services:
         taskmanager.memory.network.min: 128m
         taskmanager.memory.network.max: 256m
         parallelism.default: 1
-        execution.checkpointing.interval: 10s
-        state.backend.type: hashmap
-        state.checkpoint-storage: filesystem
-        state.checkpoints.dir: file:///warehouse/checkpoints
-        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
-        metrics.reporter.prom.port: 9249
-    volumes:
-      - warehouse:/warehouse
-    depends_on:
-      - flink-jobmanager
-
-  flink-taskmanager-node-2:
-    image: ${FLINK_IMAGE}
-    pull_policy: never
-    profiles: ["multi-node"]
-    hostname: flink-taskmanager-node-2
-    command: taskmanager
-    environment:
-      FLINK_PROPERTIES: |
-        jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 4
-        taskmanager.memory.process.size: 2048m
-        taskmanager.memory.jvm-metaspace.size: 256m
-        taskmanager.memory.network.min: 128m
-        taskmanager.memory.network.max: 256m
-        parallelism.default: 3
-        execution.checkpointing.interval: 10s
-        state.backend.type: hashmap
-        state.checkpoint-storage: filesystem
-        state.checkpoints.dir: file:///warehouse/checkpoints
-        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
-        metrics.reporter.prom.port: 9249
-    volumes:
-      - warehouse:/warehouse
-    depends_on:
-      - flink-jobmanager
-
-  flink-taskmanager-node-3:
-    image: ${FLINK_IMAGE}
-    pull_policy: never
-    profiles: ["multi-node"]
-    hostname: flink-taskmanager-node-3
-    command: taskmanager
-    environment:
-      FLINK_PROPERTIES: |
-        jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 4
-        taskmanager.memory.process.size: 2048m
-        taskmanager.memory.jvm-metaspace.size: 256m
-        taskmanager.memory.network.min: 128m
-        taskmanager.memory.network.max: 256m
-        parallelism.default: 3
+        classloader.resolve-order: parent-first
         execution.checkpointing.interval: 10s
         state.backend.type: hashmap
         state.checkpoint-storage: filesystem
@@ -176,7 +162,9 @@ services:
     build:
       context: ./generator
     image: ustc/event-generator:latest
-    profiles: ["core"]
+    labels:
+      thesis.node: node-1
+      thesis.role: event-ingestion
     environment:
       GENERATOR_NODE_ID: ingest-node-1
       GENERATOR_RANDOM_SEED: 20260713
@@ -184,7 +172,7 @@ services:
       GENERATOR_HISTORY_EVENTS_PER_DAY: 180
       GENERATOR_HISTORY_START_DATE: "2026-06-01"
       GENERATOR_HISTORY_END_DATE: "2026-07-17"
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_INTERNAL}
+      KAFKA_BOOTSTRAP_SERVERS: kafka-node-1:9092
       TOPIC: ods_log
       EVENT_INTERVAL_SECONDS: 0.25
       MYSQL_HOST: mysql
@@ -197,66 +185,8 @@ services:
       FRAUD_BURST_SIZE: 36
       FRAUD_USER_POOL: 3
     depends_on:
-      kafka-node-1:
-        condition: service_healthy
-      mysql:
-        condition: service_healthy
-
-  event-generator-node-2:
-    image: ustc/event-generator:latest
-    pull_policy: never
-    profiles: ["multi-node"]
-    environment:
-      GENERATOR_NODE_ID: ingest-node-2
-      GENERATOR_RANDOM_SEED: 20260713
-      GENERATOR_HISTORY_DAYS: 35
-      GENERATOR_HISTORY_EVENTS_PER_DAY: 180
-      GENERATOR_HISTORY_START_DATE: "2026-06-01"
-      GENERATOR_HISTORY_END_DATE: "2026-07-17"
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_INTERNAL}
-      TOPIC: ods_log
-      EVENT_INTERVAL_SECONDS: 0.35
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      FRAUD_INJECTION_ENABLED: "true"
-      FRAUD_BURST_EVERY: 240
-      FRAUD_BURST_SIZE: 24
-      FRAUD_USER_POOL: 3
-    depends_on:
-      kafka-node-1:
-        condition: service_healthy
-      mysql:
-        condition: service_healthy
-
-  event-generator-node-3:
-    image: ustc/event-generator:latest
-    pull_policy: never
-    profiles: ["multi-node"]
-    environment:
-      GENERATOR_NODE_ID: ingest-node-3
-      GENERATOR_RANDOM_SEED: 20260713
-      GENERATOR_HISTORY_DAYS: 35
-      GENERATOR_HISTORY_EVENTS_PER_DAY: 180
-      GENERATOR_HISTORY_START_DATE: "2026-06-01"
-      GENERATOR_HISTORY_END_DATE: "2026-07-17"
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_INTERNAL}
-      TOPIC: ods_log
-      EVENT_INTERVAL_SECONDS: 0.45
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      FRAUD_INJECTION_ENABLED: "true"
-      FRAUD_BURST_EVERY: 300
-      FRAUD_BURST_SIZE: 18
-      FRAUD_USER_POOL: 3
-    depends_on:
-      kafka-node-1:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
 
@@ -264,6 +194,9 @@ services:
     image: starrocks/fe-ubuntu:4.0-latest
     profiles: ["olap"]
     hostname: starrocks
+    labels:
+      thesis.node: node-1
+      thesis.role: starrocks-fe
     command: ["/opt/starrocks/fe_entrypoint.sh", "starrocks"]
     environment:
       HOST_TYPE: FQDN
@@ -288,6 +221,9 @@ services:
     image: starrocks/be-ubuntu:4.0-latest
     profiles: ["olap"]
     hostname: starrocks-be-node-1
+    labels:
+      thesis.node: node-1
+      thesis.role: starrocks-be
     command: ["/opt/starrocks/be_entrypoint.sh", "starrocks"]
     environment:
       HOST_TYPE: FQDN
@@ -392,8 +328,11 @@ services:
 
   hive-metastore:
     image: apache/hive:4.0.1
-    profiles: ["metastore"]
     user: root
+    hostname: hive-metastore
+    labels:
+      thesis.node: node-1
+      thesis.role: metadata-catalog
     environment:
       SERVICE_NAME: metastore
       DB_DRIVER: derby
@@ -404,6 +343,13 @@ services:
       - "19083:9083"
     volumes:
       - hive-metastore-data:/opt/hive/data
+      - warehouse:/warehouse
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9083'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
 
   dolphinscheduler:
     build:
@@ -427,7 +373,7 @@ services:
 
 volumes:
   mysql-data:
-  kafka-data:
+  kafka-node-1-data:
   warehouse:
   starrocks-fe-meta:
   starrocks-be-storage:

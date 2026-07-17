@@ -2,6 +2,8 @@ SET 'execution.runtime-mode' = 'batch';
 
 CREATE CATALOG IF NOT EXISTS paimon WITH (
   'type' = 'paimon',
+  'metastore' = 'hive',
+  'uri' = 'thrift://hive-metastore:9083',
   'warehouse' = 'file:///warehouse/paimon'
 );
 
