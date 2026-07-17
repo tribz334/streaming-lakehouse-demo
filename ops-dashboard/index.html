@@ -26,51 +26,57 @@
 <body>
   <header>
     <h1>USTC Streaming Lakehouse Ops Dashboard</h1>
-    <div>Generated at 2026-07-03 22:36:17 from local Flink, Prometheus, StarRocks, and governance metadata.</div>
+    <div>Generated at 2026-07-17 10:37:44 from local Flink, Prometheus, StarRocks, and governance metadata.</div>
   </header>
   <main>
     <div class="grid">
-      <div class="card"><div class="label">Flink Running Jobs</div><div class="value">0</div></div>
-      <div class="card"><div class="label">Flink Finished Jobs</div><div class="value">8</div></div>
+      <div class="card"><div class="label">Flink Running Jobs</div><div class="value">5</div></div>
+      <div class="card"><div class="label">Flink Finished Jobs</div><div class="value">0</div></div>
       <div class="card"><div class="label">Prometheus</div><div class="value ok">READY</div></div>
-      <div class="card"><div class="label">Governance Datasets</div><div class="value">12</div></div>
+      <div class="card"><div class="label">Governance Datasets</div><div class="value">16</div></div>
       <div class="card"><div class="label">Grafana</div><div class="value warn">FALLBACK</div></div>
       <div class="card"><div class="label">Loki</div><div class="value warn">FALLBACK</div></div>
-      <div class="card"><div class="label">Scheduler</div><div class="value ok">SUCCESS</div></div>
-      <div class="card"><div class="label">Workflow Duration</div><div class="value">105s</div></div>
+      <div class="card"><div class="label">Scheduler</div><div class="value warn">NO_RUN</div></div>
+      <div class="card"><div class="label">Workflow Duration</div><div class="value">-</div></div>
     </div>
     <section>
       <h2>Runtime Fallbacks</h2>
       <table><thead><tr><th>Component</th><th>Status</th><th>Fallback Artifact</th></tr></thead><tbody>
         <tr><td>Grafana</td><td>FALLBACK</td><td>ops-dashboard/index.html</td></tr>
         <tr><td>Loki</td><td>FALLBACK</td><td>Docker container logs plus Prometheus targets</td></tr>
-        <tr><td>DolphinScheduler</td><td>LOCAL</td><td>dolphinscheduler/dashboard/index.html</td></tr>
+        <tr><td>DolphinScheduler</td><td>READY</td><td>dolphinscheduler/dashboard/index.html</td></tr>
       </tbody></table>
     </section>
     <section>
       <h2>StarRocks BI Views</h2>
-      <table><thead><tr><th>View</th><th>Rows</th></tr></thead><tbody><tr><td>attribution</td><td>0</td></tr>
-<tr><td>metrics</td><td>86</td></tr>
-<tr><td>fraud</td><td>1</td></tr>
-<tr><td>retention</td><td>1</td></tr>
+      <table><thead><tr><th>View</th><th>Rows</th></tr></thead><tbody><tr><td>fraud</td><td>68</td></tr>
+<tr><td>retention</td><td>66</td></tr>
+<tr><td>metrics</td><td>101080</td></tr>
+<tr><td>attribution</td><td>2467</td></tr>
 </tbody></table>
     </section>
     <section>
       <h2>Prometheus Targets</h2>
       <table><thead><tr><th>Job</th><th>Scrape URL</th><th>Health</th></tr></thead><tbody><tr><td>flink</td><td>http://flink-jobmanager:9249/metrics</td><td>up</td></tr>
 <tr><td>flink</td><td>http://flink-taskmanager:9249/metrics</td><td>up</td></tr>
+<tr><td>flink</td><td>http://flink-taskmanager-node-2:9249/metrics</td><td>up</td></tr>
+<tr><td>flink</td><td>http://flink-taskmanager-node-3:9249/metrics</td><td>up</td></tr>
 <tr><td>prometheus</td><td>http://prometheus:9090/metrics</td><td>up</td></tr>
 </tbody></table>
     </section>
     <section>
       <h2>Offline Governance Lineage</h2>
-      <table><thead><tr><th>Job</th><th>Upstream</th><th>Downstream</th></tr></thead><tbody><tr><td>flink_01_ingest_to_paimon</td><td>urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td></tr>
-<tr><td>flink_02_dwd_enrich</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td></tr>
-<tr><td>flink_03_dws_metrics</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_10s,PROD)</td></tr>
-<tr><td>flink_04_ads_retention_batch</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)</td></tr>
-<tr><td>flink_05_ads_attribution_batch</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td></tr>
-<tr><td>flink_06_ads_fraud_batch</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td></tr>
-<tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_10s,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)</td></tr>
+      <table><thead><tr><th>Job</th><th>Upstream</th><th>Downstream</th></tr></thead><tbody><tr><td>flink_02_realtime_ods</td><td>urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td></tr>
+<tr><td>flink_03_realtime_dwd</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td></tr>
+<tr><td>flink_04_realtime_dws_metrics</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)</td></tr>
+<tr><td>flink_10_ads_retention</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)</td></tr>
+<tr><td>flink_08_offline_dws</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)</td></tr>
+<tr><td>flink_09_offline_dm</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)</td></tr>
+<tr><td>flink_11_ads_attribution</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td></tr>
+<tr><td>flink_08_offline_dws</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)</td></tr>
+<tr><td>flink_09_offline_dm</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)</td></tr>
+<tr><td>flink_12_ads_fraud</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td></tr>
+<tr><td>flink_05_realtime_starrocks_relay</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)</td></tr>
 <tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_attribution_summary,PROD)</td></tr>
 <tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_fraud_signal_summary,PROD)</td></tr>
 </tbody></table>

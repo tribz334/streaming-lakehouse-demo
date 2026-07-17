@@ -11,9 +11,7 @@ cur.execute(
         'v_realtime_ad_metrics',
         'v_advertiser_retention',
         'v_attribution_summary',
-        'v_fraud_signal_summary',
-        'v_data_quality_result',
-        'v_data_quality_summary'
+        'v_fraud_signal_summary'
     )
     group by t.table_name, t.schema
     order by t.table_name

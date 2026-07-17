@@ -2,6 +2,10 @@ SET 'execution.runtime-mode' = 'streaming';
 SET 'execution.checkpointing.interval' = '10s';
 SET 'table.exec.sink.upsert-materialize' = 'NONE';
 
+CREATE TEMPORARY VIEW dwd_ad_events_realtime AS
+SELECT *
+FROM paimon.ad_dw.dwd_ad_events_di /*+ OPTIONS('scan.mode' = 'latest') */;
+
 INSERT INTO paimon.ad_dw.dws_ad_metric_stream_10s
 SELECT
   window_start,
@@ -30,6 +34,6 @@ SELECT
   CAST(SUM(gmv) / NULLIF(SUM(spend), 0) AS DECIMAL(18,6)) AS roi,
   CURRENT_TIMESTAMP AS updated_at
 FROM TABLE(
-  TUMBLE(TABLE paimon.ad_dw.dwd_ad_events_di, DESCRIPTOR(event_ts), INTERVAL '10' SECOND)
+  TUMBLE(TABLE dwd_ad_events_realtime, DESCRIPTOR(event_ts), INTERVAL '10' SECOND)
 )
 GROUP BY window_start, window_end, advertiser_id, campaign_id, unit_id, creative_id;

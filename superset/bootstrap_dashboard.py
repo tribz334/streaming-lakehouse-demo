@@ -138,7 +138,7 @@ def main():
             metric_card(datasource, "实时曝光", "total_impressions", "实时曝光次数"),
             metric_card(datasource, "实时点击", "total_clicks", "实时点击次数"),
             metric_card(datasource, "实时转化", "total_conversions", "实时转化次数"),
-            metric_card(datasource, "实时 ROI", "roi", "GMV / Cost", "SMART_NUMBER"),
+            metric_card(datasource, "实时 ROAS", "roas", "广告 GMV / Cost", "SMART_NUMBER"),
         ])
         specs.append({
             "slice_name": "实时 Cost & GMV",
@@ -176,16 +176,16 @@ def main():
             },
         })
         specs.append({
-            "slice_name": "CTR / CVR / ROI",
+            "slice_name": "CTR / CVR / ROAS",
             "viz_type": "table",
             "params": {
                 "datasource": "",
                 "viz_type": "table",
                 "groupby": ["advertiser_name"],
-                "metrics": ["ctr", "cvr", "roi", "total_spend", "total_gmv"],
+                "metrics": ["ctr", "cvr", "roas", "total_spend", "total_gmv"],
                 "adhoc_filters": [],
                 "row_limit": 100,
-                "order_by_cols": [["roi", False]],
+                "order_by_cols": [["roas", False]],
                 "include_search": True,
                 "page_length": 20,
             },

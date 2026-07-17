@@ -14,7 +14,8 @@ WITH active AS (
   WHERE spend > 0
 ),
 cohort AS (
-  SELECT event_date AS cohort_date, advertiser_id
+  SELECT event_date AS cohort_date, 
+  advertiser_id
   FROM active
 )
 SELECT

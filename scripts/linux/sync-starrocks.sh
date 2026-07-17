@@ -13,4 +13,4 @@ if ! command -v pwsh >/dev/null 2>&1; then
   exit 1
 fi
 
-pwsh -NoLogo -NoProfile -File "$ROOT/scripts/windows/sync-starrocks-olap.ps1"
+pwsh -NoLogo -NoProfile -File "$ROOT/scripts/windows/sync-starrocks-olap.ps1" "$@"

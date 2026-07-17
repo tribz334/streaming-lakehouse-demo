@@ -56,7 +56,7 @@
 <text x="659.5" y="268" text-anchor="middle" class="body">DWS / ADS 专题计算</text>
 <rect x="832" y="145" width="410" height="65" rx="4" fill="#e5e7eb" stroke="#9ca3af"/>
 <text x="1037.0" y="170" text-anchor="middle" class="name">ADS 应用层</text>
-<text x="1037.0" y="191" text-anchor="middle" class="body">留存分析  |  归因分析  |  反作弊  |  数据质量</text>
+<text x="1037.0" y="191" text-anchor="middle" class="body">留存分析  |  归因分析  |  反作弊</text>
 <rect x="832" y="245" width="410" height="78" rx="4" fill="#ffffff" stroke="#9ca3af"/>
 <text x="1037.0" y="270" text-anchor="middle" class="name">DWS 汇总层</text>
 <text x="1037.0" y="291" text-anchor="middle" class="body">消耗、GMV、曝光、点击、转化、订单</text>

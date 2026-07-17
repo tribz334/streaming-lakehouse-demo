@@ -9,7 +9,7 @@ x-kafka-common: &kafka-common
     KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
     KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-    KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka-node-2:9093,3@kafka-node-3:9093
+    KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-node-1:9093,2@kafka-node-2:9093,3@kafka-node-3:9093
     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
     KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
     KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
@@ -30,8 +30,8 @@ services:
       thesis.node: node-1
       thesis.role: source-control
 
-  kafka:
-    hostname: kafka
+  kafka-node-1:
+    hostname: kafka-node-1
     labels:
       thesis.node: node-1
       thesis.role: kafka-broker-controller
@@ -40,10 +40,10 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://${KAFKA_EXTERNAL}
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-node-1:9092,PLAINTEXT_HOST://${KAFKA_EXTERNAL}
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka-node-2:9093,3@kafka-node-3:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-node-1:9093,2@kafka-node-2:9093,3@kafka-node-3:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
@@ -83,7 +83,7 @@ services:
     image: apache/kafka:3.9.1
     profiles: ["multi-node"]
     depends_on:
-      kafka:
+      kafka-node-1:
         condition: service_healthy
       kafka-node-2:
         condition: service_healthy
@@ -93,7 +93,7 @@ services:
       - /bin/bash
       - -lc
       - >-
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092
         --create --if-not-exists --topic ods_log --partitions 6
         --replication-factor 3 --config min.insync.replicas=2
     labels:
@@ -109,7 +109,7 @@ services:
       - warehouse-three-node:/warehouse
       - ./flink/sql:/opt/flink/usrlib/sql:ro
 
-  flink-taskmanager:
+  flink-taskmanager-node-1:
     hostname: node-1-flink-taskmanager
     labels:
       thesis.node: node-1
@@ -131,12 +131,12 @@ services:
     volumes:
       - warehouse-three-node:/warehouse
 
-  event-generator:
+  event-generator-node-1:
     labels:
       thesis.node: node-1
       thesis.role: event-ingestion
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-node-2:9092,kafka-node-3:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka-node-1:9092,kafka-node-2:9092,kafka-node-3:9092
     depends_on:
       kafka-init-three-node:
         condition: service_completed_successfully
@@ -146,7 +146,7 @@ services:
       thesis.node: node-2
       thesis.role: event-ingestion
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-node-2:9092,kafka-node-3:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka-node-1:9092,kafka-node-2:9092,kafka-node-3:9092
     depends_on:
       kafka-init-three-node:
         condition: service_completed_successfully
@@ -156,7 +156,7 @@ services:
       thesis.node: node-3
       thesis.role: event-ingestion
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-node-2:9092,kafka-node-3:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka-node-1:9092,kafka-node-2:9092,kafka-node-3:9092
     depends_on:
       kafka-init-three-node:
         condition: service_completed_successfully
@@ -171,8 +171,8 @@ services:
       - ./starrocks/conf/fe.conf:/demo-conf/fe.conf:ro
       - ./starrocks:/docker-entrypoint-initdb.d:ro
 
-  starrocks-be:
-    hostname: node-1-starrocks-be
+  starrocks-be-node-1:
+    hostname: starrocks-be-node-1
     labels:
       thesis.node: node-1
       thesis.role: starrocks-be
@@ -182,7 +182,7 @@ services:
       - ./starrocks/conf/be.conf:/demo-conf/be.conf:ro
 
   starrocks-be-node-2:
-    image: starrocks/be-ubuntu:3.1-latest
+    image: starrocks/be-ubuntu:4.0-latest
     profiles: ["multi-node-olap"]
     hostname: starrocks-be-node-2
     command: ["/opt/starrocks/be_entrypoint.sh", "starrocks"]
@@ -202,7 +202,7 @@ services:
       thesis.role: starrocks-be
 
   starrocks-be-node-3:
-    image: starrocks/be-ubuntu:3.1-latest
+    image: starrocks/be-ubuntu:4.0-latest
     profiles: ["multi-node-olap"]
     hostname: starrocks-be-node-3
     command: ["/opt/starrocks/be_entrypoint.sh", "starrocks"]
@@ -223,6 +223,7 @@ services:
 
 volumes:
   warehouse-three-node:
+    name: ustc_lakehouse_warehouse
   kafka-node-1-data:
   kafka-node-2-data:
   kafka-node-3-data:

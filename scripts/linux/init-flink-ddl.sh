@@ -8,6 +8,6 @@ docker compose --profile core exec -T flink-jobmanager /bin/bash -lc \
   "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sql/00_catalogs_and_tables.sql"
 
 docker compose --profile core exec -T flink-jobmanager /bin/bash -lc \
-  "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sql/09_thesis_model_tables.sql"
+  "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sql/01_model_tables.sql"
 
 echo "Flink catalogs and thesis Appendix A tables initialized."

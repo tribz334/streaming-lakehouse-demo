@@ -29,11 +29,43 @@ CREATE TABLE IF NOT EXISTS ods_log_kafka (
 ) WITH (
   'connector' = 'kafka',
   'topic' = 'ods_log',
-  'properties.bootstrap.servers' = 'kafka:9092',
+  'properties.bootstrap.servers' = 'kafka-node-1:9092',
   'properties.group.id' = 'flink-ods-log',
   'scan.startup.mode' = 'earliest-offset',
   'format' = 'json',
   'json.ignore-parse-errors' = 'true'
+);
+
+-- Relay the finalized Paimon 10-second windows to StarRocks Routine Load.
+-- Kafka decouples the Flink 2.0 job from the StarRocks connector release cycle.
+CREATE TABLE IF NOT EXISTS starrocks_realtime_metric_kafka (
+  window_start TIMESTAMP(3),
+  advertiser_id STRING,
+  campaign_id STRING,
+  unit_id STRING,
+  creative_id STRING,
+  window_end TIMESTAMP(3),
+  advertiser_name STRING,
+  spend DECIMAL(18,4),
+  gmv DECIMAL(18,2),
+  impressions BIGINT,
+  clicks BIGINT,
+  conversions BIGINT,
+  orders BIGINT,
+  ctr DECIMAL(18,6),
+  cvr DECIMAL(18,6),
+  roi DECIMAL(18,6),
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (window_start, advertiser_id, campaign_id, unit_id, creative_id) NOT ENFORCED
+) WITH (
+  'connector' = 'upsert-kafka',
+  'topic' = 'dws_ad_metric_stream_10s_sr',
+  'properties.bootstrap.servers' = 'kafka-node-1:9092',
+  'key.format' = 'json',
+  'key.json.timestamp-format.standard' = 'SQL',
+  'value.format' = 'json',
+  'value.json.timestamp-format.standard' = 'SQL',
+  'value.fields-include' = 'ALL'
 );
 
 CREATE TABLE IF NOT EXISTS mysql_advertiser (
@@ -247,50 +279,6 @@ CREATE TABLE IF NOT EXISTS dwd_ad_events_di (
   'changelog-producer' = 'lookup'
 );
 
-CREATE TABLE IF NOT EXISTS dwd_order_lifecycle_df (
-  order_id STRING,
-  advertiser_id STRING,
-  creative_id STRING,
-  user_id STRING,
-  gmv DECIMAL(18,2),
-  order_status STRING,
-  create_time TIMESTAMP(3),
-  payment_time TIMESTAMP(3),
-  refund_time TIMESTAMP(3),
-  finish_time TIMESTAMP(3),
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (order_id) NOT ENFORCED
-) WITH (
-  'bucket' = '4',
-  'merge-engine' = 'partial-update',
-  'changelog-producer' = 'lookup'
-);
-
-CREATE TABLE IF NOT EXISTS dws_ad_metric_10s (
-  window_start TIMESTAMP(3),
-  window_end TIMESTAMP(3),
-  advertiser_id STRING,
-  advertiser_name STRING,
-  campaign_id STRING,
-  unit_id STRING,
-  creative_id STRING,
-  spend DECIMAL(18,4),
-  gmv DECIMAL(18,2),
-  impressions BIGINT,
-  clicks BIGINT,
-  conversions BIGINT,
-  orders BIGINT,
-  ctr DECIMAL(18,6),
-  cvr DECIMAL(18,6),
-  roi DECIMAL(18,6),
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (window_start, advertiser_id, campaign_id, unit_id, creative_id) NOT ENFORCED
-) WITH (
-  'bucket' = '4',
-  'merge-engine' = 'deduplicate',
-  'changelog-producer' = 'lookup'
-);
-
 CREATE TABLE IF NOT EXISTS dws_ad_metric_stream_10s (
   window_start TIMESTAMP(3),
   window_end TIMESTAMP(3),
@@ -314,54 +302,6 @@ CREATE TABLE IF NOT EXISTS dws_ad_metric_stream_10s (
   'bucket' = '4',
   'merge-engine' = 'deduplicate',
   'changelog-producer' = 'lookup'
-);
-
-CREATE TABLE IF NOT EXISTS ads_data_quality_result_di (
-  check_date STRING,
-  rule_code STRING,
-  rule_name STRING,
-  data_layer STRING,
-  target_table STRING,
-  actual_value DECIMAL(24,6),
-  expected_value STRING,
-  check_status STRING,
-  severity STRING,
-  details STRING,
-  checked_at TIMESTAMP(3),
-  PRIMARY KEY (check_date, rule_code) NOT ENFORCED
-) WITH (
-  'bucket' = '2',
-  'merge-engine' = 'deduplicate',
-  'changelog-producer' = 'lookup'
-);
-
-CREATE TABLE IF NOT EXISTS ads_data_quality_summary_di (
-  check_date STRING,
-  total_rules BIGINT,
-  passed_rules BIGINT,
-  failed_rules BIGINT,
-  quality_score DECIMAL(18,2),
-  overall_status STRING,
-  checked_at TIMESTAMP(3),
-  PRIMARY KEY (check_date) NOT ENFORCED
-) WITH (
-  'bucket' = '1',
-  'merge-engine' = 'deduplicate',
-  'changelog-producer' = 'lookup'
-);
-
-CREATE TABLE IF NOT EXISTS lakehouse_feature_experiment (
-  experiment_id STRING,
-  metric_value BIGINT,
-  created_at TIMESTAMP(3),
-  PRIMARY KEY (experiment_id) NOT ENFORCED
-) WITH (
-  'bucket' = '2',
-  'merge-engine' = 'deduplicate',
-  'changelog-producer' = 'lookup',
-  'snapshot.time-retained' = '7 d',
-  'snapshot.num-retained.min' = '20',
-  'snapshot.num-retained.max' = '100'
 );
 
 CREATE TABLE IF NOT EXISTS ads_advertiser_retention_di (
@@ -397,6 +337,82 @@ CREATE TABLE IF NOT EXISTS ads_attribution_summary_di (
   updated_at TIMESTAMP(3),
   PRIMARY KEY (event_date, advertiser_id, campaign_id, attribution_model) NOT ENFORCED
 ) WITH (
+  'bucket' = '4',
+  'merge-engine' = 'deduplicate',
+  'changelog-producer' = 'full-compaction'
+);
+
+-- One row per order.  This is the drill-down dataset behind the attribution
+-- overview: the attributed creative/campaign fields remain NULL for organic
+-- orders, while the original order-side dimensions are retained separately.
+CREATE TABLE IF NOT EXISTS ads_order_attribution_detail_di (
+  event_date STRING,
+  order_event_id STRING,
+  order_id STRING,
+  order_ts TIMESTAMP(3),
+  user_id STRING,
+  order_advertiser_id STRING,
+  order_advertiser_name STRING,
+  order_campaign_id STRING,
+  order_campaign_name STRING,
+  order_gmv DECIMAL(18,2),
+  click_event_id STRING,
+  click_ts TIMESTAMP(3),
+  creative_id STRING,
+  campaign_id STRING,
+  campaign_name STRING,
+  advertiser_id STRING,
+  advertiser_name STRING,
+  touch_spend DECIMAL(18,4),
+  attribution_model STRING,
+  attribution_type STRING,
+  attribution_period STRING,
+  attribution_sort INT,
+  lag_minutes BIGINT,
+  is_attributed BOOLEAN,
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (event_date, order_event_id) NOT ENFORCED
+) PARTITIONED BY (event_date) WITH (
+  'bucket' = '4',
+  'merge-engine' = 'deduplicate',
+  'changelog-producer' = 'full-compaction'
+);
+
+-- Offline creative-grain serving dataset.  It intentionally keeps additive
+-- facts and dimensional attributes together so BI users can safely aggregate
+-- and drill across advertiser -> campaign -> creative without rejoining DWS.
+CREATE TABLE IF NOT EXISTS ads_creative_offline_di (
+  stat_date STRING,
+  creative_id STRING,
+  creative_name STRING,
+  creative_format STRING,
+  campaign_id STRING,
+  campaign_name STRING,
+  campaign_objective STRING,
+  campaign_budget DECIMAL(18,2),
+  campaign_status STRING,
+  advertiser_id STRING,
+  advertiser_name STRING,
+  industry STRING,
+  advertiser_tier STRING,
+  unit_id STRING,
+  unit_name STRING,
+  bid_type STRING,
+  bid_amount DECIMAL(18,4),
+  impressions BIGINT,
+  clicks BIGINT,
+  conversions BIGINT,
+  orders BIGINT,
+  cost DECIMAL(18,2),
+  gmv DECIMAL(18,2),
+  ctr DECIMAL(18,6),
+  cvr DECIMAL(18,6),
+  cpc DECIMAL(18,4),
+  cpa DECIMAL(18,4),
+  roi DECIMAL(18,6),
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (stat_date, creative_id) NOT ENFORCED
+) PARTITIONED BY (stat_date) WITH (
   'bucket' = '4',
   'merge-engine' = 'deduplicate',
   'changelog-producer' = 'full-compaction'

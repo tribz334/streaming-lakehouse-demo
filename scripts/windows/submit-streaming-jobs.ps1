@@ -3,10 +3,10 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $root
 
 $jobs = @(
-  "01_ingest_to_paimon.sql",
-  "02_dwd_enrich.sql",
-  "03a_dws_metrics_streaming.sql",
-  "03b_dws_thesis_streaming.sql"
+  "02_realtime_ods.sql",
+  "03_realtime_dwd.sql",
+  "04_realtime_dws_metrics.sql",
+  "05_realtime_starrocks_relay.sql"
 )
 
 foreach ($job in $jobs) {

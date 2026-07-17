@@ -15,14 +15,14 @@ Write-Host "Compose multi-node services:"
 $compose = @("compose", "-f", "docker-compose.yml", "-f", "docker-compose.three-node.yml")
 & docker @compose --profile core --profile multi-node ps `
   mysql `
-  kafka `
+  kafka-node-1 `
   kafka-node-2 `
   kafka-node-3 `
   flink-jobmanager `
-  flink-taskmanager `
+  flink-taskmanager-node-1 `
   flink-taskmanager-node-2 `
   flink-taskmanager-node-3 `
-  event-generator `
+  event-generator-node-1 `
   event-generator-node-2 `
   event-generator-node-3
 
@@ -51,13 +51,13 @@ try {
 
 Write-Host ""
 Write-Host "Kafka topic status:"
-& docker @compose --profile core --profile multi-node exec -T kafka /opt/kafka/bin/kafka-topics.sh `
-  --bootstrap-server kafka:9092 `
+& docker @compose --profile core --profile multi-node exec -T kafka-node-1 /opt/kafka/bin/kafka-topics.sh `
+  --bootstrap-server kafka-node-1:9092 `
   --describe `
   --topic ods_log
 
-$topicDescription = & docker @compose --profile core --profile multi-node exec -T kafka `
-  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe --topic ods_log
+$topicDescription = & docker @compose --profile core --profile multi-node exec -T kafka-node-1 `
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --describe --topic ods_log
 if (($topicDescription -join "`n") -notmatch "ReplicationFactor:\s*3") {
   throw "Expected ods_log replication factor 3."
 }
@@ -66,9 +66,28 @@ if ($partitionLines.Count -lt 6) {
   throw "Expected at least 6 ods_log partitions, got $($partitionLines.Count)."
 }
 
+$relayTopicDescription = & docker @compose --profile core --profile multi-node exec -T kafka-node-1 `
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --describe --topic dws_ad_metric_stream_10s_sr
+if (($relayTopicDescription -join "`n") -notmatch "ReplicationFactor:\s*3") {
+  Write-Warning "The existing relay topic has fewer than 3 replicas. Recreate or reassign this legacy topic before a Kafka fault-injection test."
+}
+
+$starrocksContainer = & docker @compose --profile olap ps -q starrocks
+if (-not [string]::IsNullOrWhiteSpace($starrocksContainer)) {
+  Write-Host ""
+  Write-Host "StarRocks real-time metric load:"
+  $routineLoad = & docker @compose --profile olap exec -T starrocks bash -lc `
+    "mysql -N -h127.0.0.1 -P9030 -uroot -e 'SHOW ROUTINE LOAD FOR ad_ads.sync_dws_ad_metric_stream_10s'"
+  if (($routineLoad -join "`n") -notmatch "\sRUNNING\s") {
+    throw "StarRocks metric Routine Load is not RUNNING."
+  }
+  & docker @compose --profile olap exec -T starrocks bash -lc `
+    "mysql -h127.0.0.1 -P9030 -uroot -e 'SELECT COUNT(*) AS metric_rows, MAX(window_start) AS latest_window FROM ad_ads.realtime_ad_metrics_snapshot'"
+}
+
 Write-Host ""
 Write-Host "Producer node logs:"
-foreach ($service in @("event-generator", "event-generator-node-2", "event-generator-node-3")) {
+foreach ($service in @("event-generator-node-1", "event-generator-node-2", "event-generator-node-3")) {
   Write-Host "[$service]"
   & docker @compose --profile core --profile multi-node logs --tail 8 $service
 }

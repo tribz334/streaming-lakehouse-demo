@@ -24,7 +24,7 @@
 <text x="550.0" y="394" text-anchor="middle" class="b">统一 Schema · 主键语义 · Snapshot · Time Travel · Compaction</text>
 <rect x="220" y="405" width="660" height="65" rx="7" fill="#f3f4f6" stroke="#111" stroke-width="1.5"/>
 <text x="550.0" y="430" text-anchor="middle" class="n">ADS 应用层</text>
-<text x="550.0" y="452" text-anchor="middle" class="b">留存分析  |  归因分析  |  反作弊  |  数据质量</text>
+<text x="550.0" y="452" text-anchor="middle" class="b">留存分析  |  归因分析  |  反作弊</text>
 <rect x="220" y="500" width="660" height="75" rx="7" fill="#fff" stroke="#111" stroke-width="1.5"/>
 <text x="550.0" y="525" text-anchor="middle" class="n">DWS 汇总层</text>
 <text x="550.0" y="547" text-anchor="middle" class="b">消耗 · GMV · 曝光 · 点击 · 转化 · 订单</text>

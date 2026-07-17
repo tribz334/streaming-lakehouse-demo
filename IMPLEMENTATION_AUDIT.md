@@ -8,21 +8,21 @@
 | --- | --- | --- |
 | Kafka 埋点事件接入 | 事件生成器持续写入 `ods_log` | `generator/produce_events.py`、Kafka 容器 |
 | MySQL 业务数据源 | 广告主、计划、创意、订单数据 | `mysql/init`、MySQL 容器 |
-| Paimon 湖仓分层 | 共享 ODS/DWD/DIM，实时 DWS 收敛，离线扩展 DWM/DM/ADS | `00_catalogs_and_tables.sql`、`09_thesis_model_tables.sql` |
-| 附录 A 数据模型 | 多事实 DWD、共享 DWM、六主题 DWS、实时 DWS、两张 DM 表 | `07_thesis_offline_layers.sql` |
+| Paimon 湖仓分层 | 共享 ODS/DWD/DIM，实时 DWS 收敛，离线扩展 DWS/DM/ADS | `00_catalogs_and_tables.sql`、`01_model_tables.sql` |
 | 单机三逻辑节点 | 3 Kafka Broker、3 Flink TM、3 采集实例，可选 3 StarRocks BE | `docker-compose.three-node.yml` |
 | Flink 流批处理 | ODS/DWD 长期流任务，DWS/ADS 有界批刷新 | `scripts/windows/*.ps1`、`scripts/linux/*.sh` |
 | 订单生命周期 | Paimon partial-update 主键表 | `dwd_order_lifecycle_df` |
-| 核心广告指标 | 消耗、GMV、曝光、点击、转化、CTR、CVR、ROI | `dws_ad_metric_10s`、StarRocks 视图 |
-| 广告主留存 | 次日、7 日、15 日、30 日留存口径 | `04_ads_retention_batch.sql` |
+| 核心广告指标 | 10 秒流表经 Kafka Routine Load 持续服务 | `dws_ad_metric_stream_10s`、Routine Load |
+| 离线核心指标大盘 | 创意粒度离线 ADS、最新完整分区 KPI、近两周趋势、多维筛选和创意下钻 | `13_ads_creative_offline.sql`、`bootstrap_offline_dashboard.py` |
+| 广告主留存 | 次日、7 日、15 日、30 日留存口径 | `10_ads_retention.sql` |
 | Schema Registry | Apicurio JSON Schema 注册与查询 | `register-schemas.ps1` |
-| StarRocks OLAP | DWS/ADS 同步到内部快照表并提供统一视图 | `sync-starrocks-olap.ps1` |
-| Superset 接入 | 注册实时指标、留存、归因、反作弊四个数据集 | `superset/bootstrap_datasets.py` |
+| StarRocks OLAP | 实时 DWS 经 Kafka Routine Load Upsert；离线 ADS 使用快照 | `05_realtime_starrocks_relay.sql`、`init_starrocks.sql`、`sync-starrocks-olap.ps1` |
+| Superset 接入 | 注册实时、离线、留存、归因和反作弊数据集并自动生成专题看板 | `superset/bootstrap_datasets.py`、`superset/bootstrap_*dashboard.py` |
 | Prometheus | Flink 指标采集和 targets API | `prometheus/prometheus.yml` |
 | 元数据与血缘导出 | DataHub 风格 JSON 和 MCP-style JSONL | `datahub/metadata`、`datahub/mcp` |
 | 本地工作流 | 批刷新、同步、治理、验证和运行历史 | `scripts/windows/init-flink-ddl.ps1`、`run-ads-batches.ps1`、`sync-starrocks-olap.ps1` |
-| 归因增强 | 7 日最后点击归因 | `05_ads_attribution_batch.sql` |
-| 反作弊增强 | 点击突增、异常 CTR、集中用户规则 | `06_ads_fraud_batch.sql` |
+| 归因增强 | 30 天 LastClick；30 分钟直归、1/3/7/30 日间归、自然订单互斥分桶；订单级下钻 | `11_ads_attribution.sql` |
+| 反作弊增强 | 点击突增、异常 CTR、集中用户规则 | `12_ads_fraud.sql` |
 
 ## 部分实现或采用本地替代
 
@@ -30,22 +30,21 @@
 | --- | --- |
 | Flink CDC 3.x 整库同步 | MySQL 已开启 binlog，也保留 CDC YAML；可运行主链路使用 JDBC 维表装载，未完成严格全量快照转增量 CDC 验证。 |
 | HDFS + Hive Metastore | Hive Metastore 已运行；Paimon 数据使用 Docker volume 文件系统，不是三节点 HDFS。 |
-| StarRocks External Catalog 直读 Paimon | Catalog 可创建，但当前 StarRocks 3.1 与 Paimon 1.1.1 snapshot 元数据不兼容，因此采用内部快照同步。 |
-| 10 秒实时 DWS 大盘 | 有 10 秒窗口指标，但本机为稳定运行将 DWS 改为批量刷新；不是论文描述的持续 10 秒可见链路。 |
-| Superset BI 应用 | 四个数据集已注册，可进入 Explore；完整广告大盘、渠道分析图表、订阅和多维下钻产品页尚未制作。 |
+| StarRocks External Catalog 直读 Paimon | Catalog 兼容性仍受版本限制；实时服务已改为 Flink upsert-kafka + Routine Load，离线 ADS 使用内部快照。 |
+| Superset BI 应用 | 已生成实时、离线、留存、广告归因和广告反作弊五类独立看板；订阅告警和面向终端用户的独立 BI 门户尚未实现。 |
 | DolphinScheduler | 提供 YAML 模板、本地 runner、运行历史和 HTML 看板；不是真实 DolphinScheduler 服务。 |
 | DataHub | 提供资产、血缘、术语离线导出；不是真实 DataHub UI 和自动字段级血缘采集。 |
-| Grafana / Loki | 配置文件已保留，本地运维 HTML 看板可用；镜像未成功拉取，真实 Grafana/Loki 未运行。 |
+| Grafana / Loki | Grafana、Loki 与 Alloy 已接入；Alloy 自动发现本项目 Docker 容器并集中采集日志，Grafana Loki 数据源已实测健康。 |
 
 ## 物理环境限制
 
 - 单机三逻辑节点不能证明跨物理机网络开销、机架故障隔离或论文中的硬件吞吐结果。
 - YARN real-time/offline/routine/ad-hoc 队列仍以 Compose profile 和作业类型模拟，未部署真实 YARN Capacity Scheduler。
 - Flink、Kafka、HDFS、StarRocks 的高可用、多副本和节点故障自动恢复演练。
-- DataHub 字段级血缘、数据质量规则体系、负责人维护和影响分析 UI。
+- DataHub 字段级血缘、负责人维护和影响分析 UI。
 - Kerberos、Ranger、字段级访问控制、敏感字段脱敏。
 - DolphinScheduler 失败重试、依赖调度和告警通知实测。
-- Grafana 告警、Loki 日志检索和 node_exporter 主机监控实测。
+- Grafana 告警和 node_exporter 主机监控实测。
 - 论文描述的亿级数据、1/2/4 并行度吞吐、端到端时延、查询响应和五轮平均性能测试。
 - 完整的 Superset 仪表板、图表和报表订阅。
 

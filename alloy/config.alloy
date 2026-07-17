@@ -1,0 +1,75 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+discovery.docker "project_containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+discovery.relabel "project_containers" {
+  targets = discovery.docker.project_containers.targets
+
+  // Keep this demo isolated from unrelated containers on the Docker host.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = sys.env("COMPOSE_PROJECT_NAME")
+    action        = "keep"
+  }
+
+  // Alloy's own logs must not be sent back into its input pipeline.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "alloy"
+    action        = "drop"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service_name"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_thesis_node"]
+    target_label  = "node"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_thesis_role"]
+    target_label  = "role"
+  }
+}
+
+loki.source.docker "project_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.project_containers.output
+  labels     = {
+    environment = "local",
+    platform    = "docker",
+  }
+  forward_to = [loki.process.docker.receiver]
+}
+
+loki.process "docker" {
+  stage.docker {}
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

@@ -1,13 +1,65 @@
 CREATE DATABASE IF NOT EXISTS ad_ads;
 
-DROP VIEW IF EXISTS ad_ads.v_realtime_ad_metrics;
-DROP VIEW IF EXISTS ad_ads.v_advertiser_retention;
-DROP VIEW IF EXISTS ad_ads.v_attribution_summary;
-DROP VIEW IF EXISTS ad_ads.v_fraud_signal_summary;
-DROP VIEW IF EXISTS ad_ads.v_data_quality_result;
-DROP VIEW IF EXISTS ad_ads.v_data_quality_summary;
-DROP VIEW IF EXISTS ad_ads.v_dwd_ad_events_detail;
-DROP VIEW IF EXISTS ad_ads.v_dwm_ad_event_wide;
+USE ad_ads;
+
+DROP VIEW IF EXISTS v_realtime_ad_metrics;
+DROP VIEW IF EXISTS v_advertiser_retention;
+DROP VIEW IF EXISTS v_attribution_summary;
+DROP VIEW IF EXISTS v_order_attribution_detail;
+DROP VIEW IF EXISTS v_creative_offline_metrics;
+DROP VIEW IF EXISTS v_fraud_signal_summary;
+DROP VIEW IF EXISTS v_dwd_ad_events_detail;
+DROP VIEW IF EXISTS v_dwm_ad_event_wide;
+
+CREATE TABLE IF NOT EXISTS realtime_ad_metrics_snapshot (
+  window_start DATETIME NOT NULL,
+  advertiser_id VARCHAR(64) NOT NULL,
+  campaign_id VARCHAR(64) NOT NULL,
+  unit_id VARCHAR(64) NOT NULL,
+  creative_id VARCHAR(64) NOT NULL,
+  window_end DATETIME NOT NULL,
+  advertiser_name VARCHAR(255),
+  spend DECIMAL(18,4),
+  gmv DECIMAL(18,2),
+  impressions BIGINT,
+  clicks BIGINT,
+  conversions BIGINT,
+  orders BIGINT,
+  ctr DECIMAL(18,6),
+  cvr DECIMAL(18,6),
+  roi DECIMAL(18,6),
+  updated_at DATETIME
+)
+PRIMARY KEY(window_start, advertiser_id, campaign_id, unit_id, creative_id)
+DISTRIBUTED BY HASH(advertiser_id) BUCKETS 4
+PROPERTIES ("replication_num" = "1");
+
+CREATE OR REPLACE VIEW v_realtime_ad_metrics AS
+SELECT
+  window_start, advertiser_id, campaign_id, unit_id, creative_id,
+  window_end, advertiser_name, spend, gmv, impressions, clicks,
+  conversions, orders, ctr, cvr, roi AS roas, updated_at
+FROM realtime_ad_metrics_snapshot;
+
+-- Flink publishes finalized Paimon windows as JSON. Routine Load is the
+-- always-on StarRocks consumer; Primary Key semantics make replays idempotent.
+CREATE ROUTINE LOAD ad_ads.sync_dws_ad_metric_stream_10s
+ON realtime_ad_metrics_snapshot
+PROPERTIES (
+  "format" = "json",
+  "desired_concurrent_number" = "1",
+  "max_batch_interval" = "5",
+  "strict_mode" = "true",
+  "max_filter_ratio" = "0",
+  "pause_on_fatal_parse_error" = "true",
+  "timezone" = "Asia/Shanghai",
+  "merge_condition" = "updated_at"
+)
+FROM KAFKA (
+  "kafka_broker_list" = "kafka-node-1:9092",
+  "kafka_topic" = "dws_ad_metric_stream_10s_sr",
+  "property.kafka_default_offsets" = "OFFSET_BEGINNING"
+);
 
 CREATE EXTERNAL CATALOG paimon_catalog
 PROPERTIES (
@@ -16,34 +68,6 @@ PROPERTIES (
   "paimon.catalog.warehouse" = "file:///warehouse/paimon"
 );
 
-CREATE OR REPLACE VIEW ad_ads.v_realtime_ad_metrics AS
-SELECT *
-FROM paimon_catalog.ad_dw.dws_ad_metric_10s;
-
-CREATE OR REPLACE VIEW ad_ads.v_advertiser_retention AS
-SELECT *
-FROM paimon_catalog.ad_dw.ads_advertiser_retention_di;
-
-CREATE OR REPLACE VIEW ad_ads.v_attribution_summary AS
-SELECT *
-FROM paimon_catalog.ad_dw.ads_attribution_summary_di;
-
-CREATE OR REPLACE VIEW ad_ads.v_fraud_signal_summary AS
-SELECT *
-FROM paimon_catalog.ad_dw.ads_fraud_signal_di;
-
-CREATE OR REPLACE VIEW ad_ads.v_data_quality_result AS
-SELECT *
-FROM paimon_catalog.ad_dw.ads_data_quality_result_di;
-
-CREATE OR REPLACE VIEW ad_ads.v_data_quality_summary AS
-SELECT *
-FROM paimon_catalog.ad_dw.ads_data_quality_summary_di;
-
-CREATE OR REPLACE VIEW ad_ads.v_dwd_ad_events_detail AS
-SELECT *
-FROM paimon_catalog.ad_dw.dwd_ad_events_di;
-
-CREATE OR REPLACE VIEW ad_ads.v_dwm_ad_event_wide AS
-SELECT *
-FROM paimon_catalog.ad_dw.dwm_ad_event_wide;
+-- The external catalog can be queried directly when the StarRocks/Paimon
+-- reader versions are compatible. sync-starrocks-olap.ps1 still creates
+-- internal snapshot tables and BI views for faster dashboards and demos.

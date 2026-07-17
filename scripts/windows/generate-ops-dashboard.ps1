@@ -26,9 +26,7 @@ USE ad_ads;
 SELECT 'metrics' AS view_name, COUNT(*) AS rows_count FROM v_realtime_ad_metrics
 UNION ALL SELECT 'retention', COUNT(*) FROM v_advertiser_retention
 UNION ALL SELECT 'attribution', COUNT(*) FROM v_attribution_summary
-UNION ALL SELECT 'fraud', COUNT(*) FROM v_fraud_signal_summary
-UNION ALL SELECT 'quality_rules', COUNT(*) FROM v_data_quality_result
-UNION ALL SELECT 'quality_summary', COUNT(*) FROM v_data_quality_summary;
+UNION ALL SELECT 'fraud', COUNT(*) FROM v_fraud_signal_summary;
 "@
   $tempFile = Join-Path ([System.IO.Path]::GetTempPath()) ("ops-starrocks-{0}.sql" -f ([guid]::NewGuid()))
   try {

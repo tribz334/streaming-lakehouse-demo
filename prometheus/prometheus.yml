@@ -11,6 +11,6 @@ scrape_configs:
     static_configs:
       - targets:
           - "flink-jobmanager:9249"
-          - "flink-taskmanager:9249"
+          - "flink-taskmanager-node-1:9249"
           - "flink-taskmanager-node-2:9249"
           - "flink-taskmanager-node-3:9249"
