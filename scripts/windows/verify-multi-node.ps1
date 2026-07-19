@@ -83,12 +83,6 @@ if ($partitionLines.Count -lt 6) {
   throw "Expected at least 6 ods_log partitions, got $($partitionLines.Count)."
 }
 
-$relayTopicDescription = & docker @compose exec -T kafka-node-1 `
-  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --describe --topic dws_ad_metric_stream_10s_sr
-if (($relayTopicDescription -join "`n") -notmatch "ReplicationFactor:\s*1") {
-  throw "Expected relay topic replication factor 1."
-}
-
 $starrocksContainer = & docker @compose --profile olap ps -q starrocks
 if (-not [string]::IsNullOrWhiteSpace($starrocksContainer)) {
   Write-Host ""
@@ -101,14 +95,9 @@ if (-not [string]::IsNullOrWhiteSpace($starrocksContainer)) {
   }
   Write-Host "Frontends=1, Backends=1"
 
-  Write-Host "StarRocks real-time metric load:"
-  $routineLoad = & docker @compose --profile olap exec -T starrocks bash -lc `
-    "mysql -N -h127.0.0.1 -P9030 -uroot -e 'SHOW ROUTINE LOAD FOR ad_ads.sync_dws_ad_metric_stream_10s'"
-  if (($routineLoad -join "`n") -notmatch "\sRUNNING\s") {
-    throw "StarRocks metric Routine Load is not RUNNING."
-  }
+  Write-Host "StarRocks real-time metric table:"
   & docker @compose --profile olap exec -T starrocks bash -lc `
-    "mysql -h127.0.0.1 -P9030 -uroot -e 'SELECT COUNT(*) AS metric_rows, MAX(window_start) AS latest_window FROM ad_ads.realtime_ad_metrics_snapshot'"
+    "mysql -h127.0.0.1 -P9030 -uroot -e 'SELECT COUNT(*) AS metric_rows, MAX(window_start) AS latest_window FROM ad_ads.realtime_ad_metrics_10s'"
 }
 
 Write-Host ""

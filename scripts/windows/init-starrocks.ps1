@@ -3,32 +3,11 @@ $PSNativeCommandUseErrorActionPreference = $false
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $root
 
-$multiBrokerCount = @(docker ps `
-  --filter "label=com.docker.compose.project=ustc_lakehouse" `
-  --filter "label=thesis.role=kafka-broker-controller" `
-  --filter "status=running" `
-  -q).Count
-$relayReplicationFactor = if ($multiBrokerCount -ge 3) { 3 } else { 1 }
-
-docker compose exec -T kafka-node-1 /opt/kafka/bin/kafka-topics.sh `
-  --bootstrap-server kafka-node-1:9092 `
-  --create --if-not-exists `
-  --topic dws_ad_metric_stream_10s_sr `
-  --partitions 3 `
-  --replication-factor $relayReplicationFactor | Out-Null
-if ($LASTEXITCODE -ne 0) {
-  throw "Could not create the StarRocks metric relay topic. Start the core profile first."
-}
-
-# STOP is intentionally best-effort: the first initialization has no old job.
-docker compose --profile olap exec -T starrocks bash -lc `
-  "mysql -h127.0.0.1 -P9030 -uroot -e 'STOP ROUTINE LOAD FOR ad_ads.sync_dws_ad_metric_stream_10s'" 2>$null
-
 $metricTableDdl = @(docker compose --profile olap exec -T starrocks bash -lc `
-  "mysql -N -h127.0.0.1 -P9030 -uroot -e 'SHOW CREATE TABLE ad_ads.realtime_ad_metrics_snapshot'" 2>$null)
+  "mysql -N -h127.0.0.1 -P9030 -uroot -e 'SHOW CREATE TABLE ad_ads.realtime_ad_metrics_10s'" 2>$null)
 $metricTableResetSql = ""
 if ($metricTableDdl.Count -gt 0 -and ($metricTableDdl -join "`n") -notmatch "PRIMARY KEY") {
-  $metricTableResetSql = "DROP TABLE IF EXISTS ad_ads.realtime_ad_metrics_snapshot;"
+  $metricTableResetSql = "DROP TABLE IF EXISTS ad_ads.realtime_ad_metrics_10s;"
   Write-Host "Migrating the legacy real-time metric table to the Primary Key model."
 }
 
@@ -69,5 +48,5 @@ try {
   Remove-Item -Path $tempFile -ErrorAction SilentlyContinue
 }
 
-Write-Host "StarRocks real-time Primary Key table and Kafka Routine Load are ready."
+Write-Host "StarRocks real-time Primary Key table is ready for the Java Flink JDBC sink."
 Write-Host "Run sync-starrocks-olap.ps1 for offline ADS snapshots."

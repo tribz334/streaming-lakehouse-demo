@@ -97,7 +97,7 @@ def main():
               SUM(orders) AS orders,
               SUM(spend) AS cost,
               SUM(gmv) AS gmv
-            FROM realtime_ad_metrics_snapshot
+            FROM realtime_ad_metrics_10s
             WHERE window_start < CURRENT_DATE()
             GROUP BY DATE(window_start), creative_id
             ORDER BY stat_date, creative_id

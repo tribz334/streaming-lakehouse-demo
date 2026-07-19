@@ -4,12 +4,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-for job in 02_realtime_ods.sql 03_realtime_dwd.sql 04_realtime_dws_metrics.sql 05_realtime_starrocks_relay.sql; do
-  log="/tmp/${job}.log"
-  run_file="/tmp/run_${job}"
-  docker compose exec -d flink-jobmanager /bin/bash -lc \
-    "cat /opt/flink/usrlib/sql/00_catalogs_and_tables.sql /opt/flink/usrlib/sql/${job} > ${run_file} && nohup /opt/flink/bin/sql-client.sh -f ${run_file} > ${log} 2>&1 &"
-  echo "Submitted ${job}; container log: ${log}"
-done
+docker run --rm -v maven-cache:/root/.m2 -v "${ROOT}/flink-java:/workspace" \
+  -w /workspace maven:3.9.11-eclipse-temurin-17 mvn -q -DskipTests package
 
-echo "Streaming jobs requested. Check http://127.0.0.1:8082"
+if docker compose exec -T flink-jobmanager flink list -r 2>&1 | grep -q starrocks_realtime_metric_sink; then
+  echo "Realtime Java job is already running; no duplicate job was submitted."
+  exit 0
+fi
+
+docker compose exec -T flink-jobmanager flink run -d \
+  -c cn.edu.ustc.lakehouse.realtime.RealtimeAdMetricJob \
+  /opt/flink/usrlib/java/ad-realtime-metric-job.jar \
+  --startup-mode latest --parallelism 1
+
+echo "One Java streaming job submitted. Check http://127.0.0.1:8082"

@@ -11,7 +11,7 @@ DROP VIEW IF EXISTS v_fraud_signal_summary;
 DROP VIEW IF EXISTS v_dwd_ad_events_detail;
 DROP VIEW IF EXISTS v_dwm_ad_event_wide;
 
-CREATE TABLE IF NOT EXISTS realtime_ad_metrics_snapshot (
+CREATE TABLE IF NOT EXISTS realtime_ad_metrics_10s (
   window_start DATETIME NOT NULL,
   advertiser_id VARCHAR(64) NOT NULL,
   campaign_id VARCHAR(64) NOT NULL,
@@ -38,28 +38,31 @@ CREATE OR REPLACE VIEW v_realtime_ad_metrics AS
 SELECT
   window_start, advertiser_id, campaign_id, unit_id, creative_id,
   window_end, advertiser_name, spend, gmv, impressions, clicks,
-  conversions, orders, ctr, cvr, roi AS roas, updated_at
-FROM realtime_ad_metrics_snapshot;
+  conversions, orders, ctr, cvr, roi AS roas, updated_at,
+  previous_spend, previous_gmv,
+  spend - previous_spend AS spend_change,
+  gmv - previous_gmv AS gmv_change,
+  (spend - previous_spend) / NULLIF(previous_spend, 0) AS spend_change_rate,
+  (gmv - previous_gmv) / NULLIF(previous_gmv, 0) AS gmv_change_rate
+FROM (
+  SELECT
+    window_start, advertiser_id, campaign_id, unit_id, creative_id,
+    window_end, advertiser_name, spend, gmv, impressions, clicks,
+    conversions, orders, ctr, cvr, roi, updated_at,
+    LAG(spend) OVER (
+      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id
+      ORDER BY window_start
+    ) AS previous_spend,
+    LAG(gmv) OVER (
+      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id
+      ORDER BY window_start
+    ) AS previous_gmv
+  FROM realtime_ad_metrics_10s
+) window_metrics;
 
--- Flink publishes finalized Paimon windows as JSON. Routine Load is the
--- always-on StarRocks consumer; Primary Key semantics make replays idempotent.
-CREATE ROUTINE LOAD ad_ads.sync_dws_ad_metric_stream_10s
-ON realtime_ad_metrics_snapshot
-PROPERTIES (
-  "format" = "json",
-  "desired_concurrent_number" = "1",
-  "max_batch_interval" = "5",
-  "strict_mode" = "true",
-  "max_filter_ratio" = "0",
-  "pause_on_fatal_parse_error" = "true",
-  "timezone" = "Asia/Shanghai",
-  "merge_condition" = "updated_at"
-)
-FROM KAFKA (
-  "kafka_broker_list" = "kafka-node-1:9092",
-  "kafka_topic" = "dws_ad_metric_stream_10s_sr",
-  "property.kafka_default_offsets" = "OFFSET_BEGINNING"
-);
+-- The Java Flink job writes each finalized 10-second window directly to this
+-- Primary Key table. The former Kafka relay and Routine Load are no longer in
+-- the realtime hot path.
 
 CREATE EXTERNAL CATALOG paimon_catalog
 PROPERTIES (

@@ -1,6 +1,6 @@
 # Real Stack Status
 
-Last verified: 2026-07-17 12:32 Asia/Shanghai.
+Last verified: 2026-07-19 10:36 Asia/Shanghai.
 
 ## Verified Running
 
@@ -13,7 +13,7 @@ Last verified: 2026-07-17 12:32 Asia/Shanghai.
   - Flink CDC 3.6.0-2.2 snapshot + binlog pipeline
   - event generator writing Kafka `ods_log`
 - Flink DDL created source tables and Paimon ODS/DIM/DWD/DWS/ADS tables.
-- The operational chain includes persistent ODS, DWD, 10-second DWS, Kafka relay, and themed DWS jobs.
+- The real-time hot path is one persistent Java Flink job: Kafka parsing, event-time windowing, metric aggregation, dimension enrichment, and one final StarRocks write.
 - DWS and ADS refresh jobs finish synchronously in batch mode:
   - DWS 10-second metric aggregation
   - advertiser retention
@@ -21,7 +21,7 @@ Last verified: 2026-07-17 12:32 Asia/Shanghai.
   - demo-calibrated fraud signal detection
   - creative-grain offline BI serving dataset
 - StarRocks FE/BE is running and queryable.
-- `sync_dws_ad_metric_stream_10s` Routine Load is `RUNNING`; after restart with latest-only DWD scanning, a 25-second check advanced all three Kafka partitions and loaded 21,841 total records with zero rejected rows.
+- Java job `3ab08552c5725627876e79096411d6a5` was `RUNNING`; completed checkpoints advanced and the StarRocks table grew from 193,729 to 193,797 rows during verification.
 - Superset is running and includes the offline creative dataset:
   - `v_realtime_ad_metrics`
   - `v_advertiser_retention`
@@ -47,7 +47,7 @@ Last verified: 2026-07-17 12:32 Asia/Shanghai.
 ```text
 ods_ad_events_di                179135
 dwd_ad_events_di                 47552
-dws_ad_metric_stream_10s         continuously updated by Flink
+dws_ad_metric_stream_10s         retained for offline compatibility; not used by the hot path
 ads_advertiser_retention_di          1
 ads_attribution_summary_di          14
 ads_fraud_signal_di                 refreshed by batch workflow
@@ -61,7 +61,7 @@ ods_ad_order                      1019
 ## Latest StarRocks View Counts
 
 ```text
-v_realtime_ad_metrics       81232 at verification and continuously increasing
+v_realtime_ad_metrics      193797 at verification and continuously increasing
 v_advertiser_retention          1
 v_attribution_summary          14
 v_creative_offline_metrics     refreshed by daily offline workflow
@@ -72,10 +72,10 @@ v_fraud_signal_summary         12
 
 - The runnable version set is Flink 2.2.0, Flink CDC 3.6.0-2.2, Paimon Flink 2.2 bridge 1.4.2, and Kafka connector 5.0.0-2.2.
 - `flink-cdc/mysql-to-paimon.yaml` is now a submitted persistent job. Full snapshot counts and insert/update/delete binlog propagation were verified on 2026-07-17.
-- The real-time StarRocks path does not depend on Paimon External Catalog compatibility: Flink upsert-kafka and StarRocks Routine Load continuously serve `dws_ad_metric_stream_10s`. External Catalog remains available for compatibility experiments, and offline ADS still use snapshots.
+- The real-time StarRocks path does not depend on Paimon External Catalog compatibility: one Java Flink job writes 10-second metrics directly through JDBC. External Catalog remains available for compatibility experiments, and offline ADS still use snapshots.
 - Fraud thresholds in `12_ads_fraud.sql` are calibrated for the local generator's injected fraud bursts. They are meant to demonstrate the rule pipeline, not to be production thresholds.
 - Long-running Paimon stream readers can hit expired snapshots if an old job resumes from an expired checkpoint. The DWD job uses `scan.mode = latest` for the ODS source, and the current bad-state job was canceled/re-submitted.
-- ADS tables are bounded batch outputs; `dws_ad_metric_stream_10s` and its StarRocks serving path are persistent streaming jobs.
+- ADS tables are bounded batch outputs; `RealtimeAdMetricJob` is the persistent streaming job that owns the StarRocks real-time metric table.
 
 ## Remaining
 

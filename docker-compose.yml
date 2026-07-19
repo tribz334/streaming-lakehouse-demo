@@ -28,6 +28,22 @@ services:
       timeout: 5s
       retries: 20
 
+  redis:
+    image: redis:7.4-alpine
+    hostname: node-1-redis
+    labels:
+      thesis.node: node-1
+      thesis.role: dim-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   kafka-node-1:
     image: apache/kafka:3.9.1
     hostname: kafka-node-1
@@ -120,11 +136,14 @@ services:
     volumes:
       - warehouse:/warehouse
       - ./flink/sql:/opt/flink/usrlib/sql:ro
+      - ./flink-java/target:/opt/flink/usrlib/java:ro
       - ./flink-cdc:/opt/flink-cdc/pipelines:ro
     depends_on:
       kafka-init:
         condition: service_completed_successfully
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       hive-metastore:
         condition: service_healthy
@@ -373,6 +392,7 @@ services:
 
 volumes:
   mysql-data:
+  redis-data:
   kafka-node-1-data:
   warehouse:
   starrocks-fe-meta:

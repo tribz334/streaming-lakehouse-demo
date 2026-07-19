@@ -56,6 +56,12 @@ DATASETS = {
             ("ctr", "DECIMAL", False, False, False),
             ("cvr", "DECIMAL", False, False, False),
             ("roas", "DECIMAL", False, False, False),
+            ("previous_spend", "DECIMAL", False, False, False),
+            ("previous_gmv", "DECIMAL", False, False, False),
+            ("spend_change", "DECIMAL", False, False, False),
+            ("gmv_change", "DECIMAL", False, False, False),
+            ("spend_change_rate", "DECIMAL", False, False, False),
+            ("gmv_change_rate", "DECIMAL", False, False, False),
             ("updated_at", "DATETIME", True, False, True),
         ],
         "metrics": [
@@ -69,6 +75,8 @@ DATASETS = {
             ("ctr", "SUM(clicks) / NULLIF(SUM(impressions), 0)"),
             ("cvr", "SUM(conversions) / NULLIF(SUM(clicks), 0)"),
             ("roas", "SUM(gmv) / NULLIF(SUM(spend), 0)"),
+            ("spend_change", "SUM(spend_change)"),
+            ("gmv_change", "SUM(gmv_change)"),
         ],
     },
     "v_advertiser_retention": {

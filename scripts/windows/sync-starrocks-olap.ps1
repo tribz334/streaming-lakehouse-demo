@@ -294,7 +294,7 @@ $starrocksSql = @"
 CREATE DATABASE IF NOT EXISTS ad_ads;
 USE ad_ads;
 
-CREATE TABLE IF NOT EXISTS realtime_ad_metrics_snapshot (
+CREATE TABLE IF NOT EXISTS realtime_ad_metrics_10s (
   window_start DATETIME NOT NULL,
   advertiser_id VARCHAR(64) NOT NULL,
   campaign_id VARCHAR(64) NOT NULL,
@@ -570,8 +570,27 @@ CREATE OR REPLACE VIEW v_realtime_ad_metrics AS
 SELECT
   window_start, advertiser_id, campaign_id, unit_id, creative_id,
   window_end, advertiser_name, spend, gmv, impressions, clicks,
-  conversions, orders, ctr, cvr, roi AS roas, updated_at
-FROM realtime_ad_metrics_snapshot;
+  conversions, orders, ctr, cvr, roi AS roas, updated_at,
+  previous_spend, previous_gmv,
+  spend - previous_spend AS spend_change,
+  gmv - previous_gmv AS gmv_change,
+  (spend - previous_spend) / NULLIF(previous_spend, 0) AS spend_change_rate,
+  (gmv - previous_gmv) / NULLIF(previous_gmv, 0) AS gmv_change_rate
+FROM (
+  SELECT
+    window_start, advertiser_id, campaign_id, unit_id, creative_id,
+    window_end, advertiser_name, spend, gmv, impressions, clicks,
+    conversions, orders, ctr, cvr, roi, updated_at,
+    LAG(spend) OVER (
+      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id
+      ORDER BY window_start
+    ) AS previous_spend,
+    LAG(gmv) OVER (
+      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id
+      ORDER BY window_start
+    ) AS previous_gmv
+  FROM realtime_ad_metrics_10s
+) window_metrics;
 
 CREATE OR REPLACE VIEW v_advertiser_retention AS
 SELECT
@@ -681,4 +700,4 @@ if ($offlineCreativeRows.Count -eq 0) {
   }
 }
 
-Write-Host "Synced offline ADS snapshots: retention=$($retentionRows.Count), attribution=$($attributionRows.Count), attribution_details=$($attributionDetailRows.Count), offline_creatives=$($offlineCreativeRows.Count), fraud=$($fraudRows.Count). Real-time metrics remain owned by Routine Load."
+Write-Host "Synced offline ADS snapshots: retention=$($retentionRows.Count), attribution=$($attributionRows.Count), attribution_details=$($attributionDetailRows.Count), offline_creatives=$($offlineCreativeRows.Count), fraud=$($fraudRows.Count). Real-time metrics remain owned by the Java Flink job."

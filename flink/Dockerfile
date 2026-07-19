@@ -12,6 +12,8 @@ COPY lib/hive-apache-1.2.2-2.jar /opt/flink/lib/hive-apache.jar
 COPY lib/flink-sql-connector-kafka-5.0.0-2.2.jar /opt/flink/lib/flink-sql-connector-kafka.jar
 COPY lib/flink-sql-connector-mysql-cdc-3.6.0-2.2.jar /opt/flink/lib/flink-sql-connector-mysql-cdc.jar
 COPY lib/mysql-connector-j.jar /opt/flink/lib/mysql-connector-j.jar
+COPY lib/flink-connector-jdbc-core.jar /opt/flink/lib/flink-connector-jdbc-core.jar
+COPY lib/flink-connector-jdbc-mysql.jar /opt/flink/lib/flink-connector-jdbc-mysql.jar
 COPY lib/flink-shaded-hadoop-2-uber.jar /opt/flink/lib/flink-shaded-hadoop-2-uber.jar
 COPY lib/flink-cdc-3.6.0-2.2-bin.tar.gz /tmp/flink-cdc.tar.gz
 RUN tar -xzf /tmp/flink-cdc.tar.gz -C /opt \

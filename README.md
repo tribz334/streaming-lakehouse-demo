@@ -14,10 +14,10 @@
 | Flink CDC | Flink CDC 3.6 YAML Pipeline；MySQL 全量快照后持续消费 binlog，实时维护 Paimon DIM/ODS |
 | Paimon 湖仓 | Paimon Flink 2.2 connector 1.4.2，warehouse: `/warehouse/paimon`，Catalog 元数据持久化到 Hive Metastore |
 | Flink 流批一体 | Flink 2.2.0 JobManager/TaskManager |
-| 流批不对称数仓 | 共享 ODS/DWD/DIM；实时止于 DWS；离线增加 DWM、DM、ADS |
+| 流批一体计算 | 实时与离线共用 Flink、业务主键和指标口径；实时热链路直写 StarRocks，离线明细与历史主题数据保存在 Paimon |
 | 论文数据字典 | `01_model_tables.sql` 定义当前保留的 DWS/DM 核心表 |
 | 订单生命周期 | Paimon `partial-update` 主键表 |
-| OLAP 服务 | StarRocks FE/BE；实时指标由 Kafka Routine Load 持续写 Primary Key 表，离线 ADS 使用内部快照 |
+| OLAP 服务 | StarRocks FE/BE；单个 Java Flink 作业将 10 秒窗口结果直接写入 Primary Key 表，离线 ADS 使用内部快照 |
 | BI 应用 | Superset 3.0.0，自动注册 StarRocks 数据库与四个 dataset |
 | Schema Registry | Apicurio Registry 3.2.5，已注册 Kafka `ods_log-value` JSON schema |
 | 运维观测 | Prometheus、Grafana、Loki、Alloy 已验证；容器日志支持按服务、节点和角色集中检索；`ops-dashboard/index.html` 本地看板已生成 |
@@ -144,7 +144,7 @@ admin / admin
 1. MySQL 初始化广告主、计划、创意、订单表。
 2. 事件生成器持续写 Kafka `ods_log`，订单事件同时写 MySQL `ad_order`，保留 CDC 输入条件。
 3. Flink CDC 3.6 先对 MySQL 业务表执行一致性快照，再持续读取 binlog，将广告主、计划、单元和创意 Upsert 到 Paimon DIM，并将订单生命周期写入 `ods_ad_order`；Flink SQL 同时持续处理 Kafka 事件 ODS/DWD。
-4. 实时链路持续产出 `dws_ad_metric_stream_10s`；`05_realtime_starrocks_relay.sql` 将其主键 changelog 写入 Kafka，StarRocks Routine Load 在 5 秒批次内持续 Upsert 到实时服务表。离线链路继续物化主题 DWS、DM 和 ADS。
+4. 单个 Java Flink 作业从 Kafka `ods_log` 读取事件，在内存中完成校验、Watermark、10 秒窗口聚合和维度补充，最后只向 StarRocks `realtime_ad_metrics_10s` 写入一次。该表按窗口时间和广告层级联合主键保留连续窗口，可用于计算消耗与GMV的环比变化；离线链路继续在 Paimon 中物化主题 DWS、DM 和 ADS，并使用相同的业务主键和指标定义进行结果核对。
 5. Flink batch SQL 计算 ADS：
    - `ads_advertiser_retention_di`：广告主留存。
    - `ads_order_attribution_detail_di`：订单级 30 天 LastClick 明细，互斥区分 30 分钟直接归因、1/3/7/30 日间接归因和自然订单。
@@ -155,11 +155,11 @@ admin / admin
 8. `export-governance-metadata.ps1` 导出 DataHub 风格离线元数据，覆盖 Kafka、Paimon、StarRocks 资产和核心血缘；`export-datahub-mcp.ps1` 额外导出 `datahub/mcp/metadata_change_proposals.jsonl`。
 9. `register-schemas.ps1` 向 Apicurio 注册 `ad-demo/ods_log-value` JSON schema。
 10. `generate-ops-dashboard.ps1` 汇总 Flink、Prometheus、StarRocks、治理元数据、调度状态和运行时 fallback，生成本地 HTML 运维看板。
-11. `bootstrap-dolphinscheduler.ps1` 通过 DolphinScheduler OpenAPI 注册离线与实时两条业务 DAG；实时 DAG 在指标 DWS 后额外启动 StarRocks relay，并校验五个常驻实时作业。
+11. `bootstrap-dolphinscheduler.ps1` 通过 DolphinScheduler OpenAPI 注册离线与实时两条业务 DAG；实时 DAG 构建并提交一个 Java Flink 常驻作业，校验该作业处于运行状态以及 StarRocks 实时表持续更新。
 
 ## 实时指标服务
 
-实时查询只读 `ad_ads.v_realtime_ad_metrics`，底表是 StarRocks Primary Key 表。Flink 的 upsert-kafka 保留 Paimon 主键更新，Routine Load 按相同复合主键幂等写入，并以 `updated_at` 阻止旧消息覆盖新结果。当前时效上限由 10 秒事件时间窗口、5 秒 watermark 和 Routine Load 最多 5 秒批次共同决定，不依赖人工执行批同步。
+实时查询只读 `ad_ads.v_realtime_ad_metrics`，底表是 StarRocks Primary Key 表。Java Flink 作业以窗口时间、广告主、计划、单元和创意构成联合主键，聚合完成后通过 JDBC 批量 Sink 直接写表；重复执行时由 StarRocks 主键模型合并相同结果。当前时效主要由 10 秒事件时间窗口、5 秒 Watermark 和 1 秒写出批次决定，不依赖 Paimon 中间表或 Kafka relay。
 
 ## 常用命令
 

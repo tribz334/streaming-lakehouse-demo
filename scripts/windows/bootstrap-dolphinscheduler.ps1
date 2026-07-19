@@ -336,10 +336,10 @@ $verifyRealtimeJobs = @'
 set -euo pipefail
 sleep 10
 overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
-running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING")] | length')
-test "$running" -ge 5
+running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and (.name | contains("starrocks_realtime_metric_sink")))] | length')
+test "$running" -eq 1
 mkdir -p /workspace/dolphinscheduler/runs
-printf 'realtime workflow completed at %s; running_jobs=%s\n' "$(date -Iseconds)" "$running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
+printf 'realtime workflow completed at %s; java_metric_jobs=%s\n' "$(date -Iseconds)" "$running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
 cat /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
 '@
 
@@ -348,47 +348,28 @@ set -euo pipefail
 KAFKA="$(docker ps --filter label=com.docker.compose.project=ustc_lakehouse --filter label=com.docker.compose.service=kafka-node-1 -q | head -n1)"
 test -n "$KAFKA"
 docker exec "$KAFKA" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic ods_log --partitions 3 --replication-factor 1
-docker exec "$KAFKA" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic dws_ad_metric_stream_10s_sr --partitions 3 --replication-factor 1
 '@
 
-$startMysqlCdc = @'
+$startRealtimeJava = @'
 set -euo pipefail
-JM="$(docker ps --filter label=com.docker.compose.project=ustc_lakehouse --filter label=com.docker.compose.service=flink-jobmanager -q | head -n1)"
-test -n "$JM"
-docker exec -d "$JM" bash -lc "nohup /opt/flink-cdc/bin/flink-cdc.sh /opt/flink-cdc/pipelines/mysql-to-paimon.yaml --flink-home /opt/flink -t remote -Drest.address=flink-jobmanager -Drest.port=8081 >/tmp/mysql-cdc-to-paimon.log 2>&1 &"
-for i in $(seq 1 40); do
-  if curl -fsS http://flink-jobmanager:8081/jobs/overview | jq -e '.jobs[] | select(.name == "mysql-cdc-to-paimon" and .state == "RUNNING")' >/dev/null; then
-    exit 0
-  fi
-  sleep 3
-done
-docker exec "$JM" bash -lc "tail -n 120 /tmp/mysql-cdc-to-paimon.log"
-exit 1
+cd /workspace
+bash scripts/linux/submit-streaming-jobs.sh
 '@
 
 $realtimeTasks = @(
   (New-TaskSpec "stop_existing_stream_jobs" "Stop current streaming jobs for release or schema evolution" $stopRealtimeJobs 100 220),
   (New-TaskSpec "prepare_realtime_resources" "Ensure the Kafka ODS topic exists before starting ingestion" $prepareRealtimeResources 320 220),
-  (New-TaskSpec "start_ods_stream" "Start Kafka-to-Paimon ODS streaming ingestion" (New-StreamingSqlCommand "02_realtime_ods.sql") 560 100),
-  (New-TaskSpec "start_mysql_cdc" "Start MySQL snapshot and binlog synchronization into Paimon" $startMysqlCdc 560 340),
-  (New-TaskSpec "start_dwd_stream" "Start ODS-to-DWD streaming enrichment" (New-StreamingSqlCommand "03_realtime_dwd.sql") 820 220),
-  (New-TaskSpec "start_dws_metric_stream" "Start ten-second operational DWS aggregation" (New-StreamingSqlCommand "04_realtime_dws_metrics.sql") 1080 220),
-  (New-TaskSpec "start_starrocks_metric_relay" "Continuously relay the operational DWS changelog to StarRocks" (New-StreamingSqlCommand "05_realtime_starrocks_relay.sql") 1340 220),
-  (New-TaskSpec "verify_realtime_jobs" "Verify CDC and four persistent real-time jobs and write the receipt" $verifyRealtimeJobs 1600 220)
+  (New-TaskSpec "start_realtime_java_job" "Build and submit the single Kafka-to-StarRocks Java Flink job" $startRealtimeJava 600 220),
+  (New-TaskSpec "verify_realtime_job" "Verify the Java metric job and write the receipt" $verifyRealtimeJobs 880 220)
 )
 $realtimeEdges = @(
   [ordered]@{ from = "stop_existing_stream_jobs"; to = "prepare_realtime_resources" },
-  [ordered]@{ from = "prepare_realtime_resources"; to = "start_ods_stream" },
-  [ordered]@{ from = "prepare_realtime_resources"; to = "start_mysql_cdc" },
-  [ordered]@{ from = "start_ods_stream"; to = "start_dwd_stream" },
-  [ordered]@{ from = "start_mysql_cdc"; to = "start_dwd_stream" },
-  [ordered]@{ from = "start_dwd_stream"; to = "start_dws_metric_stream" },
-  [ordered]@{ from = "start_dws_metric_stream"; to = "start_starrocks_metric_relay" },
-  [ordered]@{ from = "start_starrocks_metric_relay"; to = "verify_realtime_jobs" }
+  [ordered]@{ from = "prepare_realtime_resources"; to = "start_realtime_java_job" },
+  [ordered]@{ from = "start_realtime_java_job"; to = "verify_realtime_job" }
 )
 
 $offlineCode = Set-WorkflowDefinition $projectCode $offlineWorkflowName "Daily 02:00 bounded ODS/DIM/DWD/DWS/DM/ADS load" $offlineTasks $offlineEdges "SERIAL_WAIT"
-$realtimeCode = Set-WorkflowDefinition $projectCode $realtimeWorkflowName "Manual stop-and-restart operations for persistent ODS/DIM/DWD/DWS streaming jobs" $realtimeTasks $realtimeEdges "SERIAL_WAIT"
+$realtimeCode = Set-WorkflowDefinition $projectCode $realtimeWorkflowName "Manual stop-and-restart operations for the single Kafka-to-StarRocks Java streaming job" $realtimeTasks $realtimeEdges "SERIAL_WAIT"
 
 Enable-DailySchedule $projectCode $offlineCode
 

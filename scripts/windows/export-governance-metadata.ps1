@@ -10,7 +10,6 @@ $datasets = @(
   @{ urn = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)"; name = "ad_dw.ods_ad_events_di"; platform = "paimon"; layer = "ods" },
   @{ urn = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dim_advertiser_df,PROD)"; name = "ad_dw.dim_advertiser_df"; platform = "paimon"; layer = "dim" },
   @{ urn = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; name = "ad_dw.dwd_ad_events_di"; platform = "paimon"; layer = "dwd" },
-  @{ urn = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)"; name = "ad_dw.dws_ad_metric_stream_10s"; platform = "paimon"; layer = "dws"; domain = "realtime_metrics" },
   @{ urn = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)"; name = "ad_dw.dws_attribution_candidate_df"; platform = "paimon"; layer = "dws"; domain = "attribution" },
   @{ urn = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)"; name = "ad_dw.dws_user_click_window_df"; platform = "paimon"; layer = "dws"; domain = "anti_fraud" },
   @{ urn = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)"; name = "ad_dw.dm_attribution_touchpoint_df"; platform = "paimon"; layer = "dm"; domain = "attribution" },
@@ -27,7 +26,6 @@ $datasets = @(
 $lineage = @(
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)"; job = "flink_02_realtime_ods" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; job = "flink_03_realtime_dwd" },
-  @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)"; job = "flink_04_realtime_dws_metrics" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)"; job = "flink_10_ads_retention" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)"; job = "flink_08_offline_dws" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)"; job = "flink_09_offline_dm" },
@@ -35,7 +33,7 @@ $lineage = @(
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)"; job = "flink_08_offline_dws" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)"; job = "flink_09_offline_dm" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)"; job = "flink_12_ads_fraud" },
-  @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)"; job = "flink_05_realtime_starrocks_relay" },
+  @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)"; job = "flink_java_realtime_ad_metric" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_attribution_summary,PROD)"; job = "sync_starrocks_olap" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_fraud_signal_summary,PROD)"; job = "sync_starrocks_olap" }
 )
