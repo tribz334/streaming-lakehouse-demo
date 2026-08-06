@@ -1,7 +1,7 @@
 package cn.edu.ustc.lakehouse.realtime.source;
 
 import cn.edu.ustc.lakehouse.realtime.config.RealtimeJobConfig;
-import cn.edu.ustc.lakehouse.realtime.model.AdBillDetail;
+import cn.edu.ustc.lakehouse.realtime.model.AdBill;
 
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
@@ -16,22 +16,22 @@ import java.time.ZoneId;
 public final class AdBillCdcSource {
     private AdBillCdcSource() {}
 
-    public static DataStream<AdBillDetail> create(
+    public static DataStream<AdBill> create(
             StreamTableEnvironment tableEnvironment, RealtimeJobConfig config) {
         tableEnvironment.executeSql(createTableDdl(config));
         Table bill = tableEnvironment.from("mysql_ad_bill_cdc");
         return tableEnvironment.toChangelogStream(bill)
                 .filter(row -> row.getKind() == RowKind.INSERT)
                 .name("mysql ad bill CDC changelog")
-                .map(row -> toAdBillDetail(row, config.getOrderTimeZone()))
-                .returns(AdBillDetail.class)
-                .name("extract authoritative ad_bill_detail");
+                .map(row -> toAdBill(row, config.getOrderTimeZone()))
+                .returns(AdBill.class)
+                .name("extract authoritative ad_bill");
     }
 
-    private static AdBillDetail toAdBillDetail(Row row, String timeZone) {
+    private static AdBill toAdBill(Row row, String timeZone) {
         String billId = string(row, 0);
         LocalDateTime billTime = (LocalDateTime) row.getField(9);
-        AdBillDetail detail = new AdBillDetail();
+        AdBill detail = new AdBill();
         detail.setBillId(billId);
         detail.setBillTimeMillis(
                 billTime.atZone(ZoneId.of(timeZone)).toInstant().toEpochMilli());
@@ -73,7 +73,7 @@ public final class AdBillCdcSource {
                   'username' = '%s',
                   'password' = '%s',
                   'database-name' = '%s',
-                  'table-name' = 'ad_bill_detail',
+                  'table-name' = 'ad_bill',
                   'server-id' = '5601-5608',
                   'server-time-zone' = 'UTC',
                   'scan.startup.mode' = 'latest-offset'

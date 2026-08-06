@@ -52,7 +52,7 @@ realtime/
 
 ### 08 `source/OrderCdcSource.java`
 
-读取 MySQL `ad_order` CDC，筛选支付成功订单并执行订单生命周期去重。
+读取 MySQL `order` CDC，筛选支付成功的商品订单并执行订单生命周期去重。订单只携带用户、商品和交易金额，广告归属由点击流确定。
 
 ### 09 `model/OrderDetail.java`
 
@@ -74,7 +74,7 @@ realtime/
 
 ### 13 `source/AdBillCdcSource.java`
 
-读取 MySQL `ad_bill_detail` CDC，产出 `AdBillDetail` 计费事实；随后由 `DwdAdBillDetail` 转成 DWS 公共事实格式，为实时指标提供权威广告消耗。
+读取 MySQL `ad_bill` CDC，产出 `AdBill` 计费事实；随后由 `DwdAdBill` 转成 DWS 公共事实格式，为实时指标提供权威广告消耗。
 
 ### 14 `dws/MetricKey.java`
 

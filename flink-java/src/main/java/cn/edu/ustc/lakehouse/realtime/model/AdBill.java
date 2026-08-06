@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 
 /** One immutable advertising charge produced by the ad billing system. */
-public class AdBillDetail implements Serializable {
+public class AdBill implements Serializable {
     private String billId;
     private long billTimeMillis;
     private String advertiserId;
@@ -16,7 +16,7 @@ public class AdBillDetail implements Serializable {
     private String commerceScene;
     private BigDecimal cost;
 
-    public AdBillDetail() {}
+    public AdBill() {}
 
     public String getBillId() { return billId; }
     public void setBillId(String billId) { this.billId = billId; }

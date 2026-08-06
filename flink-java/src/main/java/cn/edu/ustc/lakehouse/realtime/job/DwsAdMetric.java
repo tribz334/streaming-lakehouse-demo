@@ -2,18 +2,21 @@ package cn.edu.ustc.lakehouse.realtime.job;
 
 import cn.edu.ustc.lakehouse.realtime.config.RealtimeJobConfig;
 import cn.edu.ustc.lakehouse.realtime.dwd.AttributionProcessFunction;
-import cn.edu.ustc.lakehouse.realtime.dwd.DwdAdBillDetail;
+import cn.edu.ustc.lakehouse.realtime.dwd.DwdAdBill;
+import cn.edu.ustc.lakehouse.realtime.dwd.DimBroadcastEnrichment;
 import cn.edu.ustc.lakehouse.realtime.dwd.DwdLogProcessFunction;
 import cn.edu.ustc.lakehouse.realtime.dwd.DwdOrderDetail;
 import cn.edu.ustc.lakehouse.realtime.dws.DwsMetricAggregation;
 import cn.edu.ustc.lakehouse.realtime.model.AdClickEvent;
 import cn.edu.ustc.lakehouse.realtime.model.AdEvent;
+import cn.edu.ustc.lakehouse.realtime.model.CreativeDimChange;
 import cn.edu.ustc.lakehouse.realtime.model.OrderDetail;
 import cn.edu.ustc.lakehouse.realtime.model.PageLogEvent;
 import cn.edu.ustc.lakehouse.realtime.model.RealtimeMetric;
 import cn.edu.ustc.lakehouse.realtime.sink.KafkaDwdUtil;
 import cn.edu.ustc.lakehouse.realtime.sink.StarRocksUtil;
 import cn.edu.ustc.lakehouse.realtime.source.AdBillCdcSource;
+import cn.edu.ustc.lakehouse.realtime.source.CreativeDimCdcSource;
 import cn.edu.ustc.lakehouse.realtime.source.OrderCdcSource;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -24,6 +27,7 @@ import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
@@ -38,6 +42,8 @@ public final class DwsAdMetric {
             new OutputTag<>("dirty-ad-events", Types.STRING);
     private static final OutputTag<PageLogEvent> PAGE_EVENTS =
             new OutputTag<>("page-events") {};
+    private static final OutputTag<String> DIM_DIRTY_EVENTS =
+            new OutputTag<>("dirty-dim-enrichment", Types.STRING);
 
     private DwsAdMetric() {}
 
@@ -77,7 +83,18 @@ public final class DwsAdMetric {
         KafkaDwdUtil.sinkDwdPageLog(parsedEvents.getSideOutput(PAGE_EVENTS), config);
         KafkaDwdUtil.sinkDwdDirtyLog(parsedEvents.getSideOutput(DIRTY_EVENTS), config);
 
-        DataStream<AdEvent> dwdAdActionEvents = parsedEvents
+        BroadcastStream<CreativeDimChange> creativeDimensions = CreativeDimCdcSource
+                .create(tableEnvironment, config)
+                .broadcast(DimBroadcastEnrichment.DIM_STATE);
+
+        SingleOutputStreamOperator<AdEvent> enrichedAdEvents = parsedEvents
+                .connect(creativeDimensions)
+                .process(new DimBroadcastEnrichment(DIM_DIRTY_EVENTS))
+                .name("DWD enrich creative hierarchy from broadcast DIM CDC");
+        KafkaDwdUtil.sinkDwdDirtyLog(
+                enrichedAdEvents.getSideOutput(DIM_DIRTY_EVENTS), config);
+
+        DataStream<AdEvent> dwdAdActionEvents = enrichedAdEvents
                 .filter(event -> !event.isPaidOrder())
                 .name("DWD dwd_ad_action_log advertising action facts");
         KafkaDwdUtil.sinkDwdAdActionLog(dwdAdActionEvents, config);
@@ -116,7 +133,7 @@ public final class DwsAdMetric {
                 .returns(AdEvent.class)
                 .name("map attributed OrderDetail to DWD fact event");
 
-        DataStream<AdEvent> billEvents = DwdAdBillDetail.build(
+        DataStream<AdEvent> billEvents = DwdAdBill.build(
                 AdBillCdcSource.create(tableEnvironment, config));
 
         DataStream<AdEvent> dwsInputEvents = dwdAdActionEvents

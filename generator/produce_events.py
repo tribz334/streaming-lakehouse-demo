@@ -28,7 +28,7 @@ FRAUD_BURST_EVERY = int(os.getenv("FRAUD_BURST_EVERY", "180"))
 FRAUD_BURST_SIZE = int(os.getenv("FRAUD_BURST_SIZE", "36"))
 FRAUD_USER_POOL = int(os.getenv("FRAUD_USER_POOL", "3"))
 TZ = timezone(timedelta(hours=8))
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 MEDIA = ["douyin", "kuaishou", "bilibili", "xiaohongshu", "toutiao", "weibo"]
 MEDIA_PROFILES = {
     "douyin": (28, 1.10, 1.06, 1.12),
@@ -84,9 +84,9 @@ ATTRIBUTION_BUCKETS = [
 ]
 ATTRIBUTION_BUCKET_WEIGHTS = [25, 75]
 AD_LOG_FIELDS = (
-    "log_type", "event_id", "ts", "advertiser_id", "campaign_id", "product_id", "pid", "unit_id",
+    "log_type", "event_id", "ts", "product_id", "pid",
     "creative_id", "media", "commerce_scene", "traffic_type", "region",
-    "user_id", "event_type", "bid_price", "schema_version",
+    "user_id", "event_type", "schema_version",
 )
 PAGE_IDS = ["home", "feed", "live_room", "product_detail", "cart", "checkout", "profile"]
 
@@ -125,17 +125,15 @@ def maybe_write_order(event):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO ad_order
-            (order_id, advertiser_id, creative_id, product_id, user_id, gmv, order_status, create_time, payment_time)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO `order`
+            (order_id, user_id, product_id, gmv, order_status, create_time, payment_time)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE order_status=VALUES(order_status), gmv=VALUES(gmv)
             """,
             (
                 event["order_id"],
-                event["advertiser_id"],
-                event["creative_id"],
-                event["product_id"],
                 event["user_id"],
+                event["product_id"],
                 event["gmv"],
                 "paid",
                 event["ts"].replace("T", " ").split("+")[0],
@@ -153,7 +151,7 @@ def maybe_write_bill(event):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT IGNORE INTO ad_bill_detail
+            INSERT IGNORE INTO ad_bill
             (bill_id, advertiser_id, campaign_id, unit_id, creative_id,
              user_id, media, commerce_scene, cost, bill_time)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -259,7 +257,7 @@ def make_event(keys, event_time=None, rng=random):
         "advertiser_id": key["advertiser_id"],
         "campaign_id": key["campaign_id"],
         "product_id": f"product_{key['creative_id']}",
-        "pid": key["unit_id"],
+        "pid": f"slot_{media}_{rng.randint(1, 12):02d}",
         "unit_id": key["unit_id"],
         "creative_id": key["creative_id"],
         "media": media,
@@ -544,7 +542,7 @@ def make_fraud_burst(keys):
                 "advertiser_id": key["advertiser_id"],
                 "campaign_id": key["campaign_id"],
                 "product_id": f"product_{key['creative_id']}",
-                "pid": key["unit_id"],
+                "pid": f"slot_{media}_{random.randint(1, 12):02d}",
                 "unit_id": key["unit_id"],
                 "creative_id": key["creative_id"],
                 "media": media,
@@ -577,7 +575,7 @@ def make_fraud_burst(keys):
                 "advertiser_id": key["advertiser_id"],
                 "campaign_id": key["campaign_id"],
                 "product_id": f"product_{key['creative_id']}",
-                "pid": key["unit_id"],
+                "pid": f"slot_{media}_{random.randint(1, 12):02d}",
                 "unit_id": key["unit_id"],
                 "creative_id": key["creative_id"],
                 "media": media,

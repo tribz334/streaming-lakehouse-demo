@@ -9,6 +9,7 @@ public class AdClickEvent implements Serializable {
     private String userId;
     private String advertiserId;
     private String campaignId;
+    private String unitId;
     private String creativeId;
     private String productId;
     private String pid;
@@ -24,6 +25,7 @@ public class AdClickEvent implements Serializable {
         click.userId = event.getUserId();
         click.advertiserId = event.getAdvertiserId();
         click.campaignId = event.getCampaignId();
+        click.unitId = event.getUnitId();
         click.creativeId = event.getCreativeId();
         click.productId = event.getProductId();
         click.pid = event.getPid();
@@ -42,6 +44,8 @@ public class AdClickEvent implements Serializable {
     public void setAdvertiserId(String advertiserId) { this.advertiserId = advertiserId; }
     public String getCampaignId() { return campaignId; }
     public void setCampaignId(String campaignId) { this.campaignId = campaignId; }
+    public String getUnitId() { return unitId; }
+    public void setUnitId(String unitId) { this.unitId = unitId; }
     public String getCreativeId() { return creativeId; }
     public void setCreativeId(String creativeId) { this.creativeId = creativeId; }
     public String getProductId() { return productId; }

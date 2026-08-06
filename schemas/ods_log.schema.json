@@ -15,11 +15,11 @@
       "pattern": "^[a-z][a-z0-9_]*$"
     },
     "schema_version": { "type": "integer", "minimum": 1 },
-    "advertiser_id": { "type": "string" },
-    "campaign_id": { "type": "string" },
     "product_id": { "type": "string" },
-    "pid": { "type": "string" },
-    "unit_id": { "type": "string" },
+    "pid": {
+      "type": "string",
+      "description": "Advertising slot id observed by the client; it is not an ad unit id."
+    },
     "creative_id": { "type": "string" },
     "media": { "type": "string" },
     "commerce_scene": {
@@ -28,7 +28,6 @@
     },
     "traffic_type": { "type": "string", "enum": ["paid", "organic"] },
     "region": { "type": "string" },
-    "bid_price": { "type": "number", "minimum": 0 },
     "page_id": { "type": "string" },
     "last_page_id": { "type": ["string", "null"] },
     "duration_ms": { "type": "integer", "minimum": 0 },
@@ -43,8 +42,8 @@
           "event_type": { "enum": ["impression", "click", "conversion"] }
         },
         "required": [
-          "advertiser_id", "campaign_id", "product_id", "pid", "unit_id",
-          "creative_id", "media", "commerce_scene", "traffic_type", "region", "bid_price"
+          "product_id", "pid", "creative_id", "media",
+          "commerce_scene", "traffic_type", "region"
         ]
       }
     },

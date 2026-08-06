@@ -56,9 +56,7 @@ public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent
             event.setEventTimeMillis(OffsetDateTime.parse(requiredText(node, "ts"))
                     .toInstant().toEpochMilli());
             event.setUserId(requiredText(node, "user_id"));
-            event.setAdvertiserId(requiredText(node, "advertiser_id"));
-            event.setCampaignId(requiredText(node, "campaign_id"));
-            event.setPid(textOrDefault(node, "pid", requiredText(node, "unit_id")));
+            event.setPid(requiredText(node, "pid"));
             event.setCreativeId(requiredText(node, "creative_id"));
             event.setProductId(textOrDefault(node, "product_id", event.getCreativeId()));
             event.setMedia(textOrDefault(node, "media", "unknown"));

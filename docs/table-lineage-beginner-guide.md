@@ -17,7 +17,7 @@
 - StarRocks 是查询加速层，Superset 从 StarRocks 读取并画图。
 
 ```text
-实时热路径：Kafka 总埋点流 ods_log -> dwd_ad_action_log / dwd_page_log / dwd_dirty_log；广告点击再与 MySQL ad_order（逻辑 ods_order_info，CDC 订单）进入 DwdOrderDetail -> dwd_order_detail；MySQL ad_bill_detail（CDC 计费）进入 DwdAdBillDetail；两类事实随后汇合 -> DWS 10 秒聚合 -> StarRocks 事实表 -> 查询侧关联 DIM -> Superset
+实时热路径：Kafka ods_log（创意/商品/广告位与事件上下文）-> 广播关联 Creative/Campaign DIM 补齐层级 ID -> dwd_ad_action_log；广告点击与 MySQL `order` 商品订单进入 DwdOrderDetail -> dwd_order_detail；MySQL `ad_bill` 进入 DwdAdBill；三类事实随后汇合 -> DWS 10 秒聚合 -> StarRocks -> Superset
 离线湖仓：MySQL -> Flink CDC -> Paimon DIM/ODS；Paimon 快照 -> DWS/DM/ADS -> StarRocks
 ```
 
@@ -40,12 +40,12 @@
 ```text
 produce_events.py
   -> 广告行为 -> Kafka: ods_log ------------------┐
-  -> 支付订单 -> MySQL: ad_order -> CDC ----------├-> DwsAdMetric
-  -> 计费明细 -> MySQL: ad_bill_detail -> CDC ------┘  DwdAdBillDetail、10 秒聚合
+  -> 商品订单 -> MySQL: order -> CDC --------------├-> DwsAdMetric
+  -> 广告计费 -> MySQL: ad_bill -> CDC ------------┘  DwdAdBill、10 秒聚合
   -> StarRocks realtime_ad_attribution_metrics_10s
 ```
 
-入口脚本是 `scripts/windows/submit-streaming-jobs.ps1`。Kafka 不再承载订单或计费事件；订单和账单均由 Flink MySQL CDC 直接读取。点击流与订单流按 `user_id + advertiser_id` 分组后通过 `connect` 进入 `AttributionProcessFunction`，订单使用 `ListState` 等待 10 秒事件时间，点击使用 `ValueState` 保留 30 分钟。实时结果保留广告主、计划、单元和创意 ID，名称、层级等展示属性由查询侧关联 Paimon DIM 获取，不在实时聚合中逐条回查。`live`、`short_video`、`shop` 归为内循环，`external` 归为外循环；外循环可以产生消耗，但不参与内循环 GMV。实时热路径不读取 Paimon ODS/DWD，不经过 Kafka relay，也不向 Paimon 写实时 10 秒中间表；Paimon 继续承担 CDC 湖仓明细、维表和离线 DWS/DM/ADS。
+入口脚本是 `scripts/windows/submit-streaming-jobs.ps1`。Kafka 不承载订单或计费事件；商品订单和广告账单由 Flink MySQL CDC 直接读取。SDK 行为只上报 `creative_id` 等事件字段，DWD 通过 DIM CDC 广播状态补齐广告主、计划和单元 ID。点击与订单按 `user_id + product_id` 分组进入 `AttributionProcessFunction`；没有命中点击的订单成为自然订单。名称、行业等展示属性不复制进每条 DWD，而在 ADS/查询层关联。
 
 每天 00:05，DolphinScheduler 的 `ad_realtime_daily_rollover` 工作流先把所有已结束日期的最终累计结果封存到 StarRocks `realtime_ad_metrics_daily`，封存成功后删除实时主表中今天以前的 10 秒窗口，再校验 `v_realtime_ad_metrics_today` 已切换到新业务日。它负责日界线、历史封存和实时明细清理；当天零点到当前时刻的连续累加仍由常驻 Flink 作业完成。
 
@@ -83,7 +83,8 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 | `campaign` | 广告计划 | `dim_campaign_df` |
 | `unit` | 广告单元 | `dim_unit_df` |
 | `creative` | 广告创意 | `dim_creative_df` |
-| `ad_order` | 订单生命周期 | `dwd_order_lifecycle_df` |
+| `order` | 跨渠道商品订单生命周期 | `ods_order`、实时订单归因 |
+| `ad_bill` | 广告计费记录 | `ods_ad_bill`、实时消耗汇总 |
 
 表结构在 `mysql/init/01_schema.sql`，演示主数据在 `mysql/init/02_seed.sql`。
 
@@ -116,11 +117,11 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 | 下游 | 离线 DWS、DM 和 ADS |
 | 更新方式 | 不属于当前实时热路径 |
 
-它是项目最重要的“事实主干”。ODS 中只有 `advertiser_id`，DWD 通过 LEFT JOIN 补出 `advertiser_name / industry / tier / campaign_name / creative_name`，匹配不到时写 `UNKNOWN`。
+实时 ODS 广告行为只携带 `creative_id`、`product_id`、广告位 `pid` 和事件上下文；DWD 通过广播 DIM 补齐 `unit_id / campaign_id / advertiser_id`。名称、行业和等级等展示属性不写入实时 DWD。
 
 ### `dwd_order_lifecycle_df`：订单状态表
 
-一行代表一个订单当前生命周期，来自 MySQL `ad_order`，保存创建、支付、退款、完成时间。MySQL 是订单权威数据源：离线 CDC Pipeline 将其同步到 Paimon，实时 Java 作业则直接消费同一张表的 binlog 并提取支付订单，与 Kafka 点击流完成归因。
+一行代表一个商品订单当前生命周期，来自 MySQL `order`，只保存用户、商品、金额和创建/支付/退款/完成时间，不保存广告层级。CDC Pipeline 将其同步到 Paimon `ods_order`；实时作业消费同一张表的 binlog，并通过 `user_id + product_id` 与 Kafka 点击完成广告归因。
 
 ## 7. DWS：主题汇总层
 
@@ -194,7 +195,7 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 Paimon 是离线湖仓存储，StarRocks 是实时与离线结果的统一查询服务。实时核心指标由 Java Flink 作业合并 Kafka 广告流和 MySQL CDC 订单流后计算，并通过 JDBC 写入 StarRocks；离线 ADS 由同步脚本生成快照。Superset 查询 StarRocks 视图。
 
 ```text
-Kafka ods_log + MySQL ad_order CDC -> DwsAdMetric -> StarRocks 实时 Primary Key 表
+Kafka ods_log + MySQL order/ad_bill CDC -> DwsAdMetric -> StarRocks 实时 Primary Key 表
 Paimon ADS -> scripts/windows/sync-starrocks-olap.ps1 -> StarRocks 快照
   -> StarRocks ad_ads 视图
   -> superset/bootstrap_datasets.py 中定义指标口径

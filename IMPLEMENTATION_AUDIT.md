@@ -7,7 +7,7 @@
 | 论文能力 | 当前实现 | 证据 |
 | --- | --- | --- |
 | Kafka 埋点事件接入 | 事件生成器持续写入 `ods_log` | `generator/produce_events.py`、Kafka 容器 |
-| MySQL 业务数据源 | 广告主、计划、创意、订单权威数据与计费明细 `ad_bill_detail` | `mysql/init`、MySQL 容器 |
+| MySQL 业务数据源 | 广告主、计划、单元、创意、商品订单 `order` 与广告计费 `ad_bill` | `mysql/init`、MySQL 容器 |
 | Flink CDC 业务库同步 | CDC Pipeline 维护 Paimon DIM、订单与计费表；实时 Java 作业直接消费订单、计费 binlog，并与 Kafka 行为流合流 | `flink-cdc/mysql-to-paimon.yaml`、`OrderCdcSource.java`、`AdBillCdcSource.java` |
 | Paimon 湖仓分层 | 保存 ODS/DWD/DIM 及离线 DWS/DM/ADS，支持批量回溯与主题加工 | `00_catalogs_and_tables.sql`、`01_model_tables.sql` |
 | 单机精简拓扑 | 1 Kafka Broker、1 Flink TM、1 采集实例，可选 1 StarRocks FE + 1 BE | `docker-compose.yml` |

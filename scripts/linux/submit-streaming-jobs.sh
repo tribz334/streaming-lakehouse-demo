@@ -18,7 +18,7 @@ docker compose exec -T flink-jobmanager flink run -d \
   --startup-mode latest \
   --order-mysql-hostname mysql \
   --order-mysql-database ad_ods \
-  --order-mysql-table ad_order \
+  --order-mysql-table order \
   --order-mysql-server-id 5501-5508 \
   --order-mysql-startup-mode latest-offset \
   --parallelism 1

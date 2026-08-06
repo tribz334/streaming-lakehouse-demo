@@ -23,6 +23,7 @@ public class OrderDetail implements Serializable {
     private String attributedClickEventId;
     private long attributedClickTimeMillis = Long.MIN_VALUE;
     private String campaignId;
+    private String unitId;
     private String pid;
     private String creativeId;
     private String media;
@@ -40,7 +41,9 @@ public class OrderDetail implements Serializable {
 
         attributedClickEventId = click.getEventId();
         attributedClickTimeMillis = click.getClickTimeMillis();
+        advertiserId = click.getAdvertiserId();
         campaignId = click.getCampaignId();
+        unitId = click.getUnitId();
         pid = click.getPid();
         creativeId = click.getCreativeId();
         media = click.getMedia();
@@ -51,7 +54,9 @@ public class OrderDetail implements Serializable {
 
     public void finalizeAttribution() {
         if (attributedClickEventId == null) {
+            advertiserId = "organic";
             campaignId = "organic";
+            unitId = "organic";
             pid = "organic";
             creativeId = "organic";
             media = "organic";
@@ -67,6 +72,7 @@ public class OrderDetail implements Serializable {
         event.setUserId(userId);
         event.setAdvertiserId("organic".equals(attributionStatus) ? "organic" : advertiserId);
         event.setCampaignId(campaignId);
+        event.setUnitId(unitId);
         event.setPid(pid);
         event.setCreativeId(creativeId);
         event.setProductId(productId);
@@ -112,6 +118,8 @@ public class OrderDetail implements Serializable {
     public void setAttributedClickTimeMillis(long attributedClickTimeMillis) { this.attributedClickTimeMillis = attributedClickTimeMillis; }
     public String getCampaignId() { return campaignId; }
     public void setCampaignId(String campaignId) { this.campaignId = campaignId; }
+    public String getUnitId() { return unitId; }
+    public void setUnitId(String unitId) { this.unitId = unitId; }
     public String getPid() { return pid; }
     public void setPid(String pid) { this.pid = pid; }
     public String getCreativeId() { return creativeId; }

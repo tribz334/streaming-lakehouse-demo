@@ -35,16 +35,16 @@ public final class OrderCdcSource {
                 .map(row -> toPaidOrder(row, config.getOrderTimeZone()))
                 .returns(OrderDetail.class)
                 .filter(event -> event != null)
-                .name("extract ods_order_info from MySQL ad_order CDC")
+                .name("extract paid commerce orders from MySQL order CDC")
                 .keyBy(OrderDetail::getOrderId)
                 .process(new PaidOrderDeduplicateFunction())
                 .name("deduplicate paid order lifecycle updates");
     }
 
     private static OrderDetail toPaidOrder(Row row, String timeZone) {
-        String status = string(row, 6);
-        LocalDateTime createTime = (LocalDateTime) row.getField(7);
-        LocalDateTime paymentTime = (LocalDateTime) row.getField(8);
+        String status = string(row, 4);
+        LocalDateTime createTime = (LocalDateTime) row.getField(5);
+        LocalDateTime paymentTime = (LocalDateTime) row.getField(6);
         if (createTime == null || paymentTime == null || !("paid".equalsIgnoreCase(status)
                 || "finished".equalsIgnoreCase(status)
                 || "completed".equalsIgnoreCase(status))) {
@@ -56,10 +56,9 @@ public final class OrderCdcSource {
         OrderDetail order = new OrderDetail();
         order.setEventId("mysql-cdc-" + orderId + "-" + paymentTime);
         order.setOrderId(orderId);
-        order.setProductId(string(row, 3));
-        order.setUserId(string(row, 4));
-        order.setAdvertiserId(string(row, 1));
-        order.setOrderGmv((BigDecimal) row.getField(5));
+        order.setUserId(string(row, 1));
+        order.setProductId(string(row, 2));
+        order.setOrderGmv((BigDecimal) row.getField(3));
         order.setCreateTimeMillis(createTime.atZone(zoneId).toInstant().toEpochMilli());
         order.setPaymentTimeMillis(paymentTime.atZone(zoneId).toInstant().toEpochMilli());
         order.setAttributionStatus("pending");
@@ -75,10 +74,8 @@ public final class OrderCdcSource {
         return String.format("""
                 CREATE TEMPORARY TABLE mysql_order_cdc (
                   order_id STRING,
-                  advertiser_id STRING,
-                  creative_id STRING,
-                  product_id STRING,
                   user_id STRING,
+                  product_id STRING,
                   gmv DECIMAL(18, 2),
                   order_status STRING,
                   create_time TIMESTAMP(3),

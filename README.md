@@ -9,7 +9,7 @@
 | 论文模块 | 本目录实现 |
 | --- | --- |
 | 业务库 | MySQL 8.4，开启 binlog/ROW/GTID |
-| 维度主数据 | Flink CDC 3.6 将广告主、计划、单元和创意持续同步到 Paimon DIM 表；实时事实保留维度外键，展示层按需关联 |
+| 维度主数据 | Flink CDC 3.6 将广告主、计划、单元和创意持续同步到 Paimon DIM；实时 DWD 根据 `creative_id` 广播补齐广告层级 ID，名称等展示属性在 ADS/查询层关联 |
 | 埋点日志 | `event-generator-node-1` 写入 Kafka `ods_log` |
 | Kafka 消息总线 | Apache Kafka 3.9.1 KRaft 单节点，6 分区、单副本 |
 | Flink CDC | Flink CDC 3.6 YAML Pipeline；MySQL 全量快照后持续消费 binlog，实时维护 Paimon DIM/ODS |
@@ -142,10 +142,10 @@ admin / admin
 
 ## 数据链路
 
-1. MySQL 初始化广告主、计划、创意、订单表和权威计费明细表 `ad_bill_detail`。
-2. 事件生成器把广告行为和页面埋点写入 Kafka 总埋点流 `ods_log`；Flink 按 `log_type` 分流到 `dwd_ad_action_log`、`dwd_page_log`，解析或校验失败的数据进入 `dwd_dirty_log`。订单写入 MySQL `ad_order`，可计费点击写入 MySQL `ad_bill_detail`，不把订单或金额混入埋点日志。
-3. Flink CDC 3.6 先对 MySQL 业务表执行一致性快照，再持续读取 binlog，将广告主、计划、单元和创意 Upsert 到 Paimon DIM，并将订单生命周期写入 `ods_ad_order`。Paimon 中已有的事件 ODS/DWD 表保留给离线快照与兼容性验证，不再承担实时热路径。
-4. 单个 Java Flink 作业同时读取 Kafka `ods_log` 广告流，以及 MySQL `ad_order`、`ad_bill_detail` 两条 CDC 流。行为事实落入 Kafka `dwd_ad_action_log`；点击流与支付订单流分别映射为 `AdClickEvent` 和 `OrderDetail`，按论文命名的 `product_id + user_id` 分组后，由 `DwdOrderDetail` 通过 `connect + AttributionProcessFunction` 执行 30 分钟 LastClick：点击保存在 `ValueState adClickEvent`，订单保存在 `ListState orderDetailList` 并按事件时间等待 10 秒，由 `onTimer` 输出 Kafka `dwd_order_detail`。计费 CDC 先映射为 `AdBillDetail`，再由 `DwdAdBillDetail` 转换为公共事实；归因订单、行为和计费事实只在 DWS 输入处 `union`，完成 10 秒窗口聚合，并将带有 `advertiser_id`、`campaign_id`、`unit_id`、`creative_id` 的结果直接写入 StarRocks `realtime_ad_attribution_metrics_10s`。广告主、计划、单元和创意名称等展示属性由查询侧关联 DIM 获取。直播、短视频和电商属于内循环；站外投放属于外循环，只进入广告行为与计费，不进入内循环 GMV。
+1. MySQL 初始化广告主、计划、单元、创意、商品订单表 `order` 和权威广告计费表 `ad_bill`。
+2. 事件生成器把广告行为和页面埋点写入 Kafka 总埋点流 `ods_log`。广告埋点只包含 `creative_id`、`product_id`、广告位 `pid` 和事件上下文，不携带广告主、计划、单元或出价；商品订单写入 MySQL `order`，可计费点击写入 MySQL `ad_bill`。
+3. Flink CDC 3.6 对 MySQL 业务表执行一致性快照后持续读取 binlog，将广告主、计划、单元和创意 Upsert 到 Paimon DIM，将商品订单和广告计费分别写入 `ods_order`、`ods_ad_bill`。
+4. Java Flink 作业解析 Kafka 行为后，通过创意与计划 DIM CDC 广播状态按 `creative_id` 补齐 `unit_id、campaign_id、advertiser_id`，再写入 `dwd_ad_action_log`。点击与纯商品订单按 `product_id + user_id` 执行 30 分钟 LastClick，产出 `dwd_order_detail`；`ad_bill` 经 `DwdAdBill` 转成广告消耗事实。行为、归因订单和计费只在 DWS 输入处汇合并完成 10 秒聚合，名称等展示属性留给 ADS/查询层关联。
 5. Flink batch SQL 计算 ADS：
    - `ads_advertiser_retention_di`：广告主留存。
    - `ads_order_attribution_detail_di`：订单级 30 天 LastClick 明细，互斥区分 30 分钟直接归因、1/3/7/30 日间接归因和自然订单。
@@ -160,7 +160,7 @@ admin / admin
 
 ## 实时指标服务
 
-实时查询底表是 StarRocks Primary Key 表。广告曝光/点击来自 Kafka，支付订单与权威消耗分别来自 MySQL `ad_order`、`ad_bill_detail` CDC；Java Flink 作业以窗口时间、广告主、计划、单元和创意构成联合主键，聚合完成后通过 JDBC 批量 Sink 直接写表。核心大盘卡片查询 `v_realtime_ad_metrics_today`，展示当天零点至当前时刻的累计值；广告消耗为内循环与外循环总消耗，内循环 GMV 只汇总内循环场景，`ROAS = 内循环GMV / 内循环消耗`。DolphinScheduler 每日 00:05 先封存已结束日期，再删除今天以前的实时 10 秒窗口并验证切日，但不负责白天的实时累加。当前时效主要由 10 秒事件时间窗口、5 秒 Watermark、MySQL binlog 传播和 1 秒写出批次决定。
+实时查询底表是 StarRocks Primary Key 表。广告曝光/点击来自 Kafka，支付订单来自 MySQL `order`，权威广告消耗来自 `ad_bill`；Java Flink 作业在 DWD 补齐层级 ID 后，以窗口时间、广告主、计划、单元和创意构成联合主键并聚合写表。核心大盘查询 `v_realtime_ad_metrics_today`，展示当天累计消耗、GMV 与 ROAS。
 
 ## 常用命令
 

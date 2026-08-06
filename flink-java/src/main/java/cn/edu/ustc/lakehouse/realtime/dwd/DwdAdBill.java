@@ -1,6 +1,6 @@
 package cn.edu.ustc.lakehouse.realtime.dwd;
 
-import cn.edu.ustc.lakehouse.realtime.model.AdBillDetail;
+import cn.edu.ustc.lakehouse.realtime.model.AdBill;
 import cn.edu.ustc.lakehouse.realtime.model.AdEvent;
 
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -8,17 +8,17 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import java.math.BigDecimal;
 
 /** Converts authoritative ad bill records into the common DWS fact contract. */
-public final class DwdAdBillDetail {
-    private DwdAdBillDetail() {}
+public final class DwdAdBill {
+    private DwdAdBill() {}
 
-    public static DataStream<AdEvent> build(DataStream<AdBillDetail> billDetails) {
-        return billDetails
-                .map(DwdAdBillDetail::toAdEvent)
+    public static DataStream<AdEvent> build(DataStream<AdBill> bills) {
+        return bills
+                .map(DwdAdBill::toAdEvent)
                 .returns(AdEvent.class)
-                .name("DwdAdBillDetail: map advertising charges to DWD fact events");
+                .name("DwdAdBill: map advertising charges to DWD fact events");
     }
 
-    private static AdEvent toAdEvent(AdBillDetail bill) {
+    private static AdEvent toAdEvent(AdBill bill) {
         AdEvent event = new AdEvent();
         event.setEventId("bill-" + bill.getBillId());
         event.setEventTimeMillis(bill.getBillTimeMillis());

@@ -17,4 +17,4 @@ SELECT 'unit', COUNT(*) FROM paimon.ad_dw.dim_unit_df
 UNION ALL
 SELECT 'creative', COUNT(*) FROM paimon.ad_dw.dim_creative_df
 UNION ALL
-SELECT 'ad_order', COUNT(*) FROM paimon.ad_dw.ods_ad_order;
+SELECT 'order', COUNT(*) FROM paimon.ad_dw.ods_order;

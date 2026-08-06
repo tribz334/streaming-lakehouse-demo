@@ -67,7 +67,8 @@ class OrderDetailAttributionTest {
         click.setUserId("user-1");
         click.setAdvertiserId("advertiser-1");
         click.setCampaignId("campaign-1");
-        click.setPid("unit-1");
+        click.setUnitId("unit-1");
+        click.setPid("slot-1");
         click.setProductId("product-1");
         click.setCreativeId(creativeId);
         click.setMedia("app");
@@ -80,7 +81,6 @@ class OrderDetailAttributionTest {
         order.setEventId("order-event-1");
         order.setOrderId("order-1");
         order.setUserId("user-1");
-        order.setAdvertiserId("advertiser-1");
         order.setProductId("product-1");
         order.setOrderGmv(new BigDecimal("128.50"));
         order.setCreateTimeMillis(createTime);
