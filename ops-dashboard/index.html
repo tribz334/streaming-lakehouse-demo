@@ -64,9 +64,7 @@
     </section>
     <section>
       <h2>Offline Governance Lineage</h2>
-      <table><thead><tr><th>Job</th><th>Upstream</th><th>Downstream</th></tr></thead><tbody><tr><td>flink_02_realtime_ods</td><td>urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td></tr>
-<tr><td>flink_03_realtime_dwd</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td></tr>
-<tr><td>flink_04_realtime_dws_metrics</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)</td></tr>
+      <table><thead><tr><th>Job</th><th>Upstream</th><th>Downstream</th></tr></thead><tbody>
 <tr><td>flink_10_ads_retention</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)</td></tr>
 <tr><td>flink_08_offline_dws</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)</td></tr>
 <tr><td>flink_09_offline_dm</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)</td></tr>
@@ -74,7 +72,6 @@
 <tr><td>flink_08_offline_dws</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)</td></tr>
 <tr><td>flink_09_offline_dm</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)</td></tr>
 <tr><td>flink_12_ads_fraud</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td></tr>
-<tr><td>flink_05_realtime_starrocks_relay</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)</td></tr>
 <tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_attribution_summary,PROD)</td></tr>
 <tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_fraud_signal_summary,PROD)</td></tr>
 </tbody></table>

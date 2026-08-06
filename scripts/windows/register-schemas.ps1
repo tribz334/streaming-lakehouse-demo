@@ -7,6 +7,8 @@ $schemaPath = Join-Path $root "schemas/ods_log.schema.json"
 $schema = Get-Content -Raw -Path $schemaPath
 $artifactId = "ods_log-value"
 $groupId = "ad-demo"
+$artifactVersion = "5.0.0"
+$eventSchemaVersion = "5"
 
 $ready = $false
 $deadline = (Get-Date).AddSeconds(90)
@@ -37,9 +39,7 @@ try {
   }
 }
 
-if ($exists) {
-  Write-Host "Apicurio artifact already exists: $groupId/$artifactId"
-} else {
+if (-not $exists) {
   $body = [ordered]@{
     artifactId = $artifactId
     artifactType = "JSON"
@@ -51,16 +51,16 @@ if ($exists) {
       project = "ustc-streaming-lakehouse-demo"
     }
     firstVersion = @{
-      version = "1.0.0"
-      name = "ods_log-value-1.0.0"
-      description = "Initial schema version for the local demo event generator."
+      version = $artifactVersion
+      name = "ods_log-value-$artifactVersion"
+      description = "Advertising behavior-only schema; orders and billable cost are read from MySQL CDC."
       content = @{
         content = $schema
         contentType = "application/json"
         references = @()
       }
       labels = @{
-        schema_version = "1"
+        schema_version = $eventSchemaVersion
       }
     }
   } | ConvertTo-Json -Depth 12
@@ -70,8 +70,48 @@ if ($exists) {
 
   Write-Host "Registered Apicurio artifact:"
   $result | ConvertTo-Json -Depth 8
+} else {
+  $versionExists = $false
+  try {
+    Invoke-RestMethod -Uri "$registry/groups/$groupId/artifacts/$artifactId/versions/$artifactVersion" -TimeoutSec 10 | Out-Null
+    $versionExists = $true
+  } catch {
+    $statusCode = $null
+    if ($_.Exception.Response) {
+      $statusCode = [int]$_.Exception.Response.StatusCode
+    }
+    if ($statusCode -and $statusCode -ne 404) {
+      throw
+    }
+  }
+
+  if ($versionExists) {
+    Write-Host "Apicurio schema version already exists: $groupId/$artifactId@$artifactVersion"
+  } else {
+    $versionBody = [ordered]@{
+      version = $artifactVersion
+      name = "ods_log-value-$artifactVersion"
+      description = "Advertising behavior-only schema; orders and billable cost are read from MySQL CDC."
+      content = @{
+        content = $schema
+        contentType = "application/json"
+        references = @()
+      }
+      labels = @{
+        schema_version = $eventSchemaVersion
+      }
+    } | ConvertTo-Json -Depth 12
+
+    $versionResult = Invoke-RestMethod `
+      -Uri "$registry/groups/$groupId/artifacts/$artifactId/versions" `
+      -Method Post -ContentType "application/json" -Body $versionBody -TimeoutSec 20
+    Write-Host "Registered Apicurio schema version:"
+    $versionResult | ConvertTo-Json -Depth 8
+  }
 }
 
 Write-Host ""
-Write-Host "Current registry artifacts:"
-Invoke-RestMethod -Uri "$registry/search/artifacts" -TimeoutSec 10 | ConvertTo-Json -Depth 8
+Write-Host "Current versions for ${groupId}/${artifactId}:"
+Invoke-RestMethod `
+  -Uri "$registry/groups/$groupId/artifacts/$artifactId/versions?order=asc" `
+  -TimeoutSec 10 | ConvertTo-Json -Depth 8

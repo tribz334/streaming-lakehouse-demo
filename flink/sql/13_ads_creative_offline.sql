@@ -13,7 +13,6 @@ SELECT
   d.stat_date,
   d.creative_id,
   COALESCE(cr.creative_name, d.creative_type, 'UNKNOWN') AS creative_name,
-  COALESCE(cr.format, 'unknown') AS creative_format,
   d.campaign_id,
   COALESCE(c.campaign_name, 'UNKNOWN') AS campaign_name,
   COALESCE(CASE WHEN c.objective = 'ROI' THEN 'ROAS' ELSE c.objective END, 'UNKNOWN') AS campaign_objective,

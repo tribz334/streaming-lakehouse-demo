@@ -244,10 +244,10 @@ if ($attributionDetailRows.Count -eq 0) {
   throw "Attribution detail export is empty; refusing to replace the existing StarRocks snapshot."
 }
 
-$offlineCreativeColumns = @("stat_date", "creative_id", "creative_name", "creative_format", "campaign_id", "campaign_name", "campaign_objective", "campaign_budget", "campaign_status", "advertiser_id", "advertiser_name", "industry", "advertiser_tier", "unit_id", "unit_name", "bid_type", "bid_amount", "impressions", "clicks", "conversions", "orders", "cost", "gmv", "ctr", "cvr", "cpc", "cpa", "roas", "updated_at")
+$offlineCreativeColumns = @("stat_date", "creative_id", "creative_name", "campaign_id", "campaign_name", "campaign_objective", "campaign_budget", "campaign_status", "advertiser_id", "advertiser_name", "industry", "advertiser_tier", "unit_id", "unit_name", "bid_type", "bid_amount", "impressions", "clicks", "conversions", "orders", "cost", "gmv", "ctr", "cvr", "cpc", "cpa", "roas", "updated_at")
 $offlineCreativeOutput = Invoke-FlinkQuery @"
 SELECT
-  stat_date, creative_id, creative_name, creative_format,
+  stat_date, creative_id, creative_name,
   campaign_id, campaign_name, campaign_objective,
   CAST(campaign_budget AS STRING) AS campaign_budget,
   campaign_status, advertiser_id, advertiser_name, industry, advertiser_tier,
@@ -317,12 +317,42 @@ PRIMARY KEY(window_start, advertiser_id, campaign_id, unit_id, creative_id)
 DISTRIBUTED BY HASH(advertiser_id) BUCKETS 4
 PROPERTIES ("replication_num" = "1");
 
+CREATE TABLE IF NOT EXISTS realtime_ad_attribution_metrics_10s (
+  window_start DATETIME NOT NULL,
+  advertiser_id VARCHAR(64) NOT NULL,
+  campaign_id VARCHAR(64) NOT NULL,
+  unit_id VARCHAR(64) NOT NULL,
+  creative_id VARCHAR(64) NOT NULL,
+  media VARCHAR(32) NOT NULL,
+  commerce_scene VARCHAR(32) NOT NULL,
+  window_end DATETIME NOT NULL,
+  advertiser_name VARCHAR(255),
+  spend DECIMAL(18,4),
+  order_gmv DECIMAL(18,2),
+  attributed_gmv DECIMAL(18,2),
+  organic_gmv DECIMAL(18,2),
+  impressions BIGINT,
+  clicks BIGINT,
+  paid_orders BIGINT,
+  attributed_orders BIGINT,
+  organic_orders BIGINT,
+  ctr DECIMAL(18,6),
+  cvr DECIMAL(18,6),
+  roi DECIMAL(18,6),
+  updated_at DATETIME
+)
+PRIMARY KEY(
+  window_start, advertiser_id, campaign_id, unit_id, creative_id,
+  media, commerce_scene
+)
+DISTRIBUTED BY HASH(advertiser_id) BUCKETS 4
+PROPERTIES ("replication_num" = "1");
+
 DROP TABLE IF EXISTS creative_offline_snapshot;
 CREATE TABLE creative_offline_snapshot (
   stat_date VARCHAR(32) NOT NULL,
   creative_id VARCHAR(64) NOT NULL,
   creative_name VARCHAR(255),
-  creative_format VARCHAR(64),
   campaign_id VARCHAR(64),
   campaign_name VARCHAR(255),
   campaign_objective VARCHAR(64),
@@ -516,7 +546,6 @@ if ($offlineCreativeRows.Count -gt 0) {
       SqlString $_.stat_date
       SqlString $_.creative_id
       SqlString $_.creative_name
-      SqlString $_.creative_format
       SqlString $_.campaign_id
       SqlString $_.campaign_name
       SqlString $_.campaign_objective
@@ -568,29 +597,63 @@ $starrocksSql += @"
 
 CREATE OR REPLACE VIEW v_realtime_ad_metrics AS
 SELECT
-  window_start, advertiser_id, campaign_id, unit_id, creative_id,
-  window_end, advertiser_name, spend, gmv, impressions, clicks,
-  conversions, orders, ctr, cvr, roi AS roas, updated_at,
-  previous_spend, previous_gmv,
+  DATE_SUB(window_start, INTERVAL 8 HOUR) AS window_start,
+  window_start AS window_start_local,
+  advertiser_id, campaign_id, unit_id, creative_id,
+  media, commerce_scene,
+  CASE commerce_scene
+    WHEN 'live' THEN '直播'
+    WHEN 'short_video' THEN '短视频'
+    WHEN 'shop' THEN '电商'
+    WHEN 'external' THEN '外循环'
+    ELSE commerce_scene
+  END AS commerce_scene_name,
+  CASE WHEN commerce_scene = 'external' THEN '外循环' ELSE '内循环' END AS loop_type,
+  DATE_SUB(window_end, INTERVAL 8 HOUR) AS window_end,
+  spend,
+  order_gmv, attributed_gmv, organic_gmv,
+  attributed_gmv AS gmv,
+  impressions, clicks, paid_orders,
+  paid_orders AS conversions, paid_orders AS orders,
+  attributed_orders, organic_orders,
+  ctr, cvr, roi AS roas,
+  DATE_SUB(updated_at, INTERVAL 8 HOUR) AS updated_at,
+  previous_spend, previous_attributed_gmv AS previous_gmv,
   spend - previous_spend AS spend_change,
-  gmv - previous_gmv AS gmv_change,
+  attributed_gmv - previous_attributed_gmv AS gmv_change,
   (spend - previous_spend) / NULLIF(previous_spend, 0) AS spend_change_rate,
-  (gmv - previous_gmv) / NULLIF(previous_gmv, 0) AS gmv_change_rate
+  (attributed_gmv - previous_attributed_gmv) /
+    NULLIF(previous_attributed_gmv, 0) AS gmv_change_rate
 FROM (
   SELECT
     window_start, advertiser_id, campaign_id, unit_id, creative_id,
-    window_end, advertiser_name, spend, gmv, impressions, clicks,
-    conversions, orders, ctr, cvr, roi, updated_at,
+    media, commerce_scene,
+    window_end, spend,
+    order_gmv, attributed_gmv, organic_gmv,
+    impressions, clicks, paid_orders, attributed_orders, organic_orders,
+    ctr, cvr, roi, updated_at,
     LAG(spend) OVER (
-      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id
+      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id,
+        media, commerce_scene
       ORDER BY window_start
     ) AS previous_spend,
-    LAG(gmv) OVER (
-      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id
+    LAG(attributed_gmv) OVER (
+      PARTITION BY advertiser_id, campaign_id, unit_id, creative_id,
+        media, commerce_scene
       ORDER BY window_start
-    ) AS previous_gmv
-  FROM realtime_ad_metrics_10s
+    ) AS previous_attributed_gmv
+  FROM realtime_ad_attribution_metrics_10s
 ) window_metrics;
+
+CREATE OR REPLACE VIEW v_realtime_ad_metrics_today AS
+SELECT *
+FROM v_realtime_ad_metrics
+WHERE DATE(window_start_local) = DATE(DATE_ADD(NOW(), INTERVAL 8 HOUR));
+
+CREATE OR REPLACE VIEW v_realtime_ad_metrics_latest_10s AS
+SELECT *
+FROM v_realtime_ad_metrics
+WHERE window_start = (SELECT MAX(window_start) FROM v_realtime_ad_metrics);
 
 CREATE OR REPLACE VIEW v_advertiser_retention AS
 SELECT
@@ -630,7 +693,6 @@ SELECT
   CAST(stat_date AS DATE) AS stat_date,
   creative_id,
   creative_name,
-  creative_format,
   campaign_id,
   campaign_name,
   campaign_objective,

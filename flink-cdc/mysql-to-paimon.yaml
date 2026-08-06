@@ -7,7 +7,7 @@ source:
   port: 3306
   username: root
   password: root
-  tables: ad_ods.advertiser,ad_ods.campaign,ad_ods.unit,ad_ods.creative,ad_ods.ad_order
+  tables: ad_ods.advertiser,ad_ods.campaign,ad_ods.unit,ad_ods.creative,ad_ods.ad_order,ad_ods.ad_bill_detail
   server-id: 5401-5408
   # The MySQL container runs in UTC; pipeline output remains Asia/Shanghai.
   server-time-zone: UTC
@@ -31,6 +31,8 @@ route:
     sink-table: ad_dw.dim_creative_df
   - source-table: ad_ods.ad_order
     sink-table: ad_dw.ods_ad_order
+  - source-table: ad_ods.ad_bill_detail
+    sink-table: ad_dw.ods_ad_bill_detail
 
 pipeline:
   name: mysql-cdc-to-paimon

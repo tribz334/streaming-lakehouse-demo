@@ -12,7 +12,7 @@ Last verified: 2026-07-19 10:36 Asia/Shanghai.
   - Paimon Flink 2.2 connector 1.4.2
   - Flink CDC 3.6.0-2.2 snapshot + binlog pipeline
   - event generator writing Kafka `ods_log`
-- Flink DDL created source tables and Paimon ODS/DIM/DWD/DWS/ADS tables.
+- Flink DDL created Paimon ODS/DIM/DWD/DWS/ADS tables for offline snapshots and compatibility.
 - The real-time hot path is one persistent Java Flink job: Kafka parsing, event-time windowing, metric aggregation, dimension enrichment, and one final StarRocks write.
 - DWS and ADS refresh jobs finish synchronously in batch mode:
   - DWS 10-second metric aggregation
@@ -47,7 +47,6 @@ Last verified: 2026-07-19 10:36 Asia/Shanghai.
 ```text
 ods_ad_events_di                179135
 dwd_ad_events_di                 47552
-dws_ad_metric_stream_10s         retained for offline compatibility; not used by the hot path
 ads_advertiser_retention_di          1
 ads_attribution_summary_di          14
 ads_fraud_signal_di                 refreshed by batch workflow
@@ -74,8 +73,7 @@ v_fraud_signal_summary         12
 - `flink-cdc/mysql-to-paimon.yaml` is now a submitted persistent job. Full snapshot counts and insert/update/delete binlog propagation were verified on 2026-07-17.
 - The real-time StarRocks path does not depend on Paimon External Catalog compatibility: one Java Flink job writes 10-second metrics directly through JDBC. External Catalog remains available for compatibility experiments, and offline ADS still use snapshots.
 - Fraud thresholds in `12_ads_fraud.sql` are calibrated for the local generator's injected fraud bursts. They are meant to demonstrate the rule pipeline, not to be production thresholds.
-- Long-running Paimon stream readers can hit expired snapshots if an old job resumes from an expired checkpoint. The DWD job uses `scan.mode = latest` for the ODS source, and the current bad-state job was canceled/re-submitted.
-- ADS tables are bounded batch outputs; `RealtimeAdMetricJob` is the persistent streaming job that owns the StarRocks real-time metric table.
+- ADS tables are bounded batch outputs; `DwsAdMetric` is the persistent streaming job that joins Kafka advertising behavior with MySQL CDC paid orders and owns the StarRocks real-time metric table.
 
 ## Remaining
 

@@ -13,6 +13,10 @@ $jars = @(
     Url = "https://repo1.maven.org/maven2/com/facebook/presto/hive/hive-apache/1.2.2-2/hive-apache-1.2.2-2.jar"
   },
   @{
+    Name = "libthrift-0.9.3.jar"
+    Url = "https://repo1.maven.org/maven2/org/apache/thrift/libthrift/0.9.3/libthrift-0.9.3.jar"
+  },
+  @{
     Name = "flink-sql-connector-kafka-5.0.0-2.2.jar"
     Url = "https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/5.0.0-2.2/flink-sql-connector-kafka-5.0.0-2.2.jar"
   },

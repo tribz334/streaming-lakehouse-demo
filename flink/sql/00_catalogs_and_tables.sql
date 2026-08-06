@@ -9,67 +9,6 @@ CREATE CATALOG paimon WITH (
   'warehouse' = 'file:///warehouse/paimon'
 );
 
-USE CATALOG default_catalog;
-USE default_database;
-
-CREATE TABLE IF NOT EXISTS ods_log_kafka (
-  event_id STRING,
-  ts STRING,
-  advertiser_id STRING,
-  campaign_id STRING,
-  unit_id STRING,
-  creative_id STRING,
-  media STRING,
-  region STRING,
-  user_id STRING,
-  event_type STRING,
-  bid_price DECIMAL(18,4),
-  spend DECIMAL(18,4),
-  gmv DECIMAL(18,2),
-  order_id STRING,
-  schema_version INT
-) WITH (
-  'connector' = 'kafka',
-  'topic' = 'ods_log',
-  'properties.bootstrap.servers' = 'kafka-node-1:9092',
-  'properties.group.id' = 'flink-ods-log',
-  'scan.startup.mode' = 'earliest-offset',
-  'format' = 'json',
-  'json.ignore-parse-errors' = 'true'
-);
-
--- Relay the finalized Paimon 10-second windows to StarRocks Routine Load.
--- Kafka decouples the Flink 2.2 job from the StarRocks connector release cycle.
-CREATE TABLE IF NOT EXISTS starrocks_realtime_metric_kafka (
-  window_start TIMESTAMP(3),
-  advertiser_id STRING,
-  campaign_id STRING,
-  unit_id STRING,
-  creative_id STRING,
-  window_end TIMESTAMP(3),
-  advertiser_name STRING,
-  spend DECIMAL(18,4),
-  gmv DECIMAL(18,2),
-  impressions BIGINT,
-  clicks BIGINT,
-  conversions BIGINT,
-  orders BIGINT,
-  ctr DECIMAL(18,6),
-  cvr DECIMAL(18,6),
-  roi DECIMAL(18,6),
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (window_start, advertiser_id, campaign_id, unit_id, creative_id) NOT ENFORCED
-) WITH (
-  'connector' = 'upsert-kafka',
-  'topic' = 'dws_ad_metric_stream_10s_sr',
-  'properties.bootstrap.servers' = 'kafka-node-1:9092',
-  'key.format' = 'json',
-  'key.json.timestamp-format.standard' = 'SQL',
-  'value.format' = 'json',
-  'value.json.timestamp-format.standard' = 'SQL',
-  'value.fields-include' = 'ALL'
-);
-
 USE CATALOG paimon;
 CREATE DATABASE IF NOT EXISTS ad_dw;
 USE ad_dw;
@@ -188,31 +127,6 @@ CREATE TABLE IF NOT EXISTS dwd_ad_events_di (
   'changelog-producer' = 'lookup'
 );
 
-CREATE TABLE IF NOT EXISTS dws_ad_metric_stream_10s (
-  window_start TIMESTAMP(3),
-  window_end TIMESTAMP(3),
-  advertiser_id STRING,
-  advertiser_name STRING,
-  campaign_id STRING,
-  unit_id STRING,
-  creative_id STRING,
-  spend DECIMAL(18,4),
-  gmv DECIMAL(18,2),
-  impressions BIGINT,
-  clicks BIGINT,
-  conversions BIGINT,
-  orders BIGINT,
-  ctr DECIMAL(18,6),
-  cvr DECIMAL(18,6),
-  roi DECIMAL(18,6),
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (window_start, advertiser_id, campaign_id, unit_id, creative_id) NOT ENFORCED
-) WITH (
-  'bucket' = '4',
-  'merge-engine' = 'deduplicate',
-  'changelog-producer' = 'lookup'
-);
-
 CREATE TABLE IF NOT EXISTS ads_advertiser_retention_di (
   cohort_date STRING,
   cohort_size BIGINT,
@@ -294,7 +208,6 @@ CREATE TABLE IF NOT EXISTS ads_creative_offline_di (
   stat_date STRING,
   creative_id STRING,
   creative_name STRING,
-  creative_format STRING,
   campaign_id STRING,
   campaign_name STRING,
   campaign_objective STRING,

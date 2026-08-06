@@ -24,8 +24,6 @@ $datasets = @(
 )
 
 $lineage = @(
-  @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)"; job = "flink_02_realtime_ods" },
-  @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; job = "flink_03_realtime_dwd" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)"; job = "flink_10_ads_retention" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)"; job = "flink_08_offline_dws" },
   @{ upstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)"; downstream = "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)"; job = "flink_09_offline_dm" },

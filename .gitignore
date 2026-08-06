@@ -19,6 +19,7 @@ flink/lib/*.tar.gz
 data/*.db
 data/*.db-shm
 data/*.db-wal
+runtime-data/
 dolphinscheduler/runs/
 paimon/experiments/*-report.json
 paimon/experiments/latest-report.json

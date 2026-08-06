@@ -1,130 +1,108 @@
 {
-  "generated_at": "2026-07-17T10:37:39",
+  "generated_at": "2026-07-23T02:44:17",
   "project": "ustc-streaming-lakehouse-demo",
   "note": "DataHub-style offline metadata export. It can be converted to MCP/ingestion events when a DataHub service is available.",
   "datasets": [
     {
       "platform": "kafka",
+      "layer": "source",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)",
-      "name": "ods_log",
-      "layer": "source"
+      "name": "ods_log"
     },
     {
       "platform": "paimon",
+      "layer": "ods",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)",
-      "name": "ad_dw.ods_ad_events_di",
-      "layer": "ods"
+      "name": "ad_dw.ods_ad_events_di"
     },
     {
       "platform": "paimon",
+      "layer": "dim",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dim_advertiser_df,PROD)",
-      "name": "ad_dw.dim_advertiser_df",
-      "layer": "dim"
+      "name": "ad_dw.dim_advertiser_df"
     },
     {
       "platform": "paimon",
+      "layer": "dwd",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)",
-      "name": "ad_dw.dwd_ad_events_di",
-      "layer": "dwd"
+      "name": "ad_dw.dwd_ad_events_di"
     },
     {
       "platform": "paimon",
-      "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)",
-      "name": "ad_dw.dws_ad_metric_stream_10s",
-      "domain": "realtime_metrics",
-      "layer": "dws"
-    },
-    {
-      "platform": "paimon",
+      "layer": "dws",
+      "domain": "attribution",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)",
-      "name": "ad_dw.dws_attribution_candidate_df",
-      "domain": "attribution",
-      "layer": "dws"
+      "name": "ad_dw.dws_attribution_candidate_df"
     },
     {
       "platform": "paimon",
+      "layer": "dws",
+      "domain": "anti_fraud",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)",
-      "name": "ad_dw.dws_user_click_window_df",
-      "domain": "anti_fraud",
-      "layer": "dws"
+      "name": "ad_dw.dws_user_click_window_df"
     },
     {
       "platform": "paimon",
+      "layer": "dm",
+      "domain": "attribution",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)",
-      "name": "ad_dw.dm_attribution_touchpoint_df",
-      "domain": "attribution",
-      "layer": "dm"
+      "name": "ad_dw.dm_attribution_touchpoint_df"
     },
     {
       "platform": "paimon",
+      "layer": "dm",
+      "domain": "anti_fraud",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)",
-      "name": "ad_dw.dm_antifraud_feature_df",
-      "domain": "anti_fraud",
-      "layer": "dm"
+      "name": "ad_dw.dm_antifraud_feature_df"
     },
     {
       "platform": "paimon",
+      "layer": "ads",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)",
-      "name": "ad_dw.ads_advertiser_retention_di",
-      "layer": "ads"
+      "name": "ad_dw.ads_advertiser_retention_di"
     },
     {
       "platform": "paimon",
+      "layer": "ads",
+      "domain": "attribution",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)",
-      "name": "ad_dw.ads_attribution_summary_di",
-      "domain": "attribution",
-      "layer": "ads"
+      "name": "ad_dw.ads_attribution_summary_di"
     },
     {
       "platform": "paimon",
+      "layer": "ads",
+      "domain": "anti_fraud",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)",
-      "name": "ad_dw.ads_fraud_signal_di",
-      "domain": "anti_fraud",
-      "layer": "ads"
+      "name": "ad_dw.ads_fraud_signal_di"
     },
     {
       "platform": "starrocks",
+      "layer": "bi",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)",
-      "name": "ad_ads.v_realtime_ad_metrics",
-      "layer": "bi"
+      "name": "ad_ads.v_realtime_ad_metrics"
     },
     {
       "platform": "starrocks",
+      "layer": "bi",
       "urn": "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_advertiser_retention,PROD)",
-      "name": "ad_ads.v_advertiser_retention",
-      "layer": "bi"
+      "name": "ad_ads.v_advertiser_retention"
     },
     {
       "platform": "starrocks",
-      "urn": "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_attribution_summary,PROD)",
-      "name": "ad_ads.v_attribution_summary",
+      "layer": "bi",
       "domain": "attribution",
-      "layer": "bi"
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_attribution_summary,PROD)",
+      "name": "ad_ads.v_attribution_summary"
     },
     {
       "platform": "starrocks",
-      "urn": "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_fraud_signal_summary,PROD)",
-      "name": "ad_ads.v_fraud_signal_summary",
+      "layer": "bi",
       "domain": "anti_fraud",
-      "layer": "bi"
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_fraud_signal_summary,PROD)",
+      "name": "ad_ads.v_fraud_signal_summary"
     }
   ],
   "lineage": [
-    {
-      "job": "flink_02_realtime_ods",
-      "upstream": "urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)",
-      "downstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)"
-    },
-    {
-      "job": "flink_03_realtime_dwd",
-      "upstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ods_ad_events_di,PROD)",
-      "downstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)"
-    },
-    {
-      "job": "flink_04_realtime_dws_metrics",
-      "upstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)",
-      "downstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)"
-    },
     {
       "job": "flink_10_ads_retention",
       "upstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)",
@@ -161,8 +139,8 @@
       "downstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)"
     },
     {
-      "job": "flink_05_realtime_starrocks_relay",
-      "upstream": "urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_ad_metric_stream_10s,PROD)",
+      "job": "flink_java_realtime_ad_metric",
+      "upstream": "urn:li:dataset:(urn:li:dataPlatform:kafka,ods_log,PROD)",
       "downstream": "urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_realtime_ad_metrics,PROD)"
     },
     {
@@ -192,12 +170,12 @@
   ],
   "schema_registry": [
     {
-      "version": "1.0.0",
-      "schema_file": "schemas/ods_log.schema.json",
-      "artifact_id": "ods_log-value",
-      "registry": "Apicurio Registry 3.2.5",
-      "group_id": "ad-demo",
       "topic": "ods_log",
+      "version": "1.0.0",
+      "artifact_id": "ods_log-value",
+      "group_id": "ad-demo",
+      "schema_file": "schemas/ods_log.schema.json",
+      "registry": "Apicurio Registry 3.2.5",
       "artifact_type": "JSON"
     }
   ]

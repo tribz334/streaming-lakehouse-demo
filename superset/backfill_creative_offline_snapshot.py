@@ -24,6 +24,27 @@ def ratio(numerator, denominator, scale=6):
     )
 
 
+def create_offline_view(cursor):
+    cursor.execute(
+        """
+        CREATE VIEW v_creative_offline_metrics AS
+        SELECT
+          CAST(stat_date AS DATE) AS stat_date,
+          creative_id, creative_name,
+          campaign_id, campaign_name, campaign_objective,
+          campaign_budget, campaign_status,
+          advertiser_id, advertiser_name, industry, advertiser_tier,
+          unit_id, unit_name, bid_type, bid_amount,
+          impressions, clicks, conversions, orders, cost, gmv,
+          ctr, cvr, cpc, cpa, roas,
+          stat_date = (SELECT MAX(stat_date) FROM creative_offline_snapshot)
+            AS is_latest_partition,
+          updated_at
+        FROM creative_offline_snapshot
+        """
+    )
+
+
 def main():
     mysql = MySQLdb.connect(
         host=os.getenv("MYSQL_HOST", "mysql"),
@@ -47,7 +68,7 @@ def main():
         dimension_cursor.execute(
             """
             SELECT
-              cr.creative_id, cr.creative_name, cr.format AS creative_format,
+              cr.creative_id, cr.creative_name,
               c.campaign_id, c.campaign_name,
               CASE WHEN c.objective = 'ROI' THEN 'ROAS' ELSE c.objective END
                 AS campaign_objective,
@@ -72,10 +93,21 @@ def main():
             has_roas = cursor.fetchone() is not None
             cursor.execute("SELECT COUNT(*) AS row_count FROM creative_offline_snapshot")
             existing_rows = cursor.fetchone()["row_count"]
+            cursor.execute("SHOW FULL TABLES LIKE 'v_creative_offline_metrics'")
+            view_exists = cursor.fetchone() is not None
         except MySQLdb.Error:
             has_roas = False
             existing_rows = 0
+            view_exists = False
         if existing_rows > 0 and has_roas and not force:
+            if not view_exists:
+                create_offline_view(cursor)
+                starrocks.commit()
+                print(
+                    "Restored v_creative_offline_metrics from the existing "
+                    f"snapshot ({existing_rows} rows)."
+                )
+                return
             print(
                 "Skipped creative offline backfill: "
                 f"snapshot already contains {existing_rows} rows."
@@ -90,7 +122,6 @@ def main():
               MAX(campaign_id) AS campaign_id,
               MAX(unit_id) AS unit_id,
               MAX(advertiser_id) AS advertiser_id,
-              MAX(advertiser_name) AS advertiser_name,
               SUM(impressions) AS impressions,
               SUM(clicks) AS clicks,
               SUM(conversions) AS conversions,
@@ -116,7 +147,6 @@ def main():
               stat_date VARCHAR(32) NOT NULL,
               creative_id VARCHAR(64) NOT NULL,
               creative_name VARCHAR(255),
-              creative_format VARCHAR(64),
               campaign_id VARCHAR(64),
               campaign_name VARCHAR(255),
               campaign_objective VARCHAR(64),
@@ -153,7 +183,7 @@ def main():
             INSERT INTO creative_offline_snapshot VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s
             )
         """
         now = datetime.now()
@@ -170,14 +200,13 @@ def main():
                     fact["stat_date"].isoformat(),
                     fact["creative_id"],
                     dim.get("creative_name", fact["creative_id"]),
-                    dim.get("creative_format", "unknown"),
                     dim.get("campaign_id", fact["campaign_id"]),
                     dim.get("campaign_name", fact["campaign_id"]),
                     dim.get("campaign_objective", "UNKNOWN"),
                     dim.get("campaign_budget"),
                     dim.get("campaign_status", "UNKNOWN"),
                     dim.get("advertiser_id", fact["advertiser_id"]),
-                    dim.get("advertiser_name", fact["advertiser_name"]),
+                    dim.get("advertiser_name", "UNKNOWN"),
                     dim.get("industry", "UNKNOWN"),
                     dim.get("advertiser_tier", "UNKNOWN"),
                     dim.get("unit_id", fact["unit_id"]),
@@ -199,24 +228,7 @@ def main():
                 )
             )
         cursor.executemany(insert_sql, rows)
-        cursor.execute(
-            """
-            CREATE VIEW v_creative_offline_metrics AS
-            SELECT
-              CAST(stat_date AS DATE) AS stat_date,
-              creative_id, creative_name, creative_format,
-              campaign_id, campaign_name, campaign_objective,
-              campaign_budget, campaign_status,
-              advertiser_id, advertiser_name, industry, advertiser_tier,
-              unit_id, unit_name, bid_type, bid_amount,
-              impressions, clicks, conversions, orders, cost, gmv,
-              ctr, cvr, cpc, cpa, roas,
-              stat_date = (SELECT MAX(stat_date) FROM creative_offline_snapshot)
-                AS is_latest_partition,
-              updated_at
-            FROM creative_offline_snapshot
-            """
-        )
+        create_offline_view(cursor)
         starrocks.commit()
         print(
             "Backfilled creative offline snapshot: "

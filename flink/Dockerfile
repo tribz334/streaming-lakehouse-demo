@@ -9,6 +9,7 @@ ARG MYSQL_CONNECTOR_VERSION=9.3.0
 USER root
 COPY lib/paimon-flink-2.2.jar /opt/flink/lib/paimon-flink-2.2.jar
 COPY lib/hive-apache-1.2.2-2.jar /opt/flink/lib/hive-apache.jar
+COPY lib/libthrift-0.9.3.jar /opt/flink/lib/libthrift.jar
 COPY lib/flink-sql-connector-kafka-5.0.0-2.2.jar /opt/flink/lib/flink-sql-connector-kafka.jar
 COPY lib/flink-sql-connector-mysql-cdc-3.6.0-2.2.jar /opt/flink/lib/flink-sql-connector-mysql-cdc.jar
 COPY lib/mysql-connector-j.jar /opt/flink/lib/mysql-connector-j.jar

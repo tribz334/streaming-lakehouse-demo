@@ -4,13 +4,15 @@ param(
   [string]$Password = "dolphinscheduler123",
   [switch]$NoTrigger,
   [switch]$TriggerOffline,
-  [switch]$TriggerRealtime
+  [switch]$TriggerRealtime,
+  [switch]$TriggerDailyRollover
 )
 
 $ErrorActionPreference = "Stop"
 $projectName = "ustc-streaming-lakehouse-demo"
 $offlineWorkflowName = "ad_lakehouse_daily_offline"
 $realtimeWorkflowName = "ad_lakehouse_realtime_operations"
+$dailyRolloverWorkflowName = "ad_realtime_daily_rollover"
 $obsoleteWorkflowNames = @("lakehouse_component_smoke_test", "ad_lakehouse_daily_refresh")
 $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 
@@ -193,8 +195,13 @@ function Set-WorkflowDefinition {
   return $workflowCode
 }
 
-function Enable-DailySchedule {
-  param([string]$ProjectCode, [string]$WorkflowCode)
+function Enable-Schedule {
+  param(
+    [string]$ProjectCode,
+    [string]$WorkflowCode,
+    [string]$Cron,
+    [string]$Description
+  )
 
   $page = Invoke-DsApi GET "/projects/$ProjectCode/schedules" @{
     workflowDefinitionCode = $WorkflowCode; pageNo = 1; pageSize = 20
@@ -204,7 +211,7 @@ function Enable-DailySchedule {
     $scheduleJson = [ordered]@{
       startTime = (Get-Date).ToString("yyyy-MM-dd 00:00:00")
       endTime = "2099-12-31 23:59:59"
-      crontab = "0 0 2 * * ?"
+      crontab = $Cron
       timezoneId = "Asia/Shanghai"
     } | ConvertTo-Json -Compress
     $schedule = Invoke-DsApi POST "/projects/$ProjectCode/schedules" @{
@@ -217,10 +224,10 @@ function Enable-DailySchedule {
       tenantCode = "default"
       workflowInstancePriority = "MEDIUM"
     }
-    Write-Host "Created daily 02:00 schedule for workflow $WorkflowCode"
+    Write-Host "Created $Description schedule for workflow $WorkflowCode"
   }
   Invoke-DsApi POST "/projects/$ProjectCode/schedules/$($schedule.id)/online" @{} | Out-Null
-  Write-Host "Offline schedule is online: scheduleId=$($schedule.id) cron=0 0 2 * * ?"
+  Write-Host "Schedule is online: scheduleId=$($schedule.id) cron=$Cron description=$Description"
 }
 
 function Start-Workflow {
@@ -255,7 +262,7 @@ if (-not $project) {
 $projectCode = [string]$project.code
 
 # Remove the earlier smoke-test/one-workflow placeholders; the thesis defines
-# two business workflows with different lifecycle and scheduling semantics.
+# three business workflows with different lifecycle and scheduling semantics.
 foreach ($obsoleteName in $obsoleteWorkflowNames) {
   $page = Invoke-DsApi GET "/projects/$projectCode/workflow-definition" @{
     pageNo = 1; pageSize = 100; searchVal = $obsoleteName
@@ -336,7 +343,7 @@ $verifyRealtimeJobs = @'
 set -euo pipefail
 sleep 10
 overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
-running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and (.name | contains("starrocks_realtime_metric_sink")))] | length')
+running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and (.name | contains("starrocks_realtime_attribution_metric_sink")))] | length')
 test "$running" -eq 1
 mkdir -p /workspace/dolphinscheduler/runs
 printf 'realtime workflow completed at %s; java_metric_jobs=%s\n' "$(date -Iseconds)" "$running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
@@ -368,17 +375,98 @@ $realtimeEdges = @(
   [ordered]@{ from = "start_realtime_java_job"; to = "verify_realtime_job" }
 )
 
+$verifyDailyRealtimeJob = @'
+set -euo pipefail
+overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
+running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and (.name | contains("starrocks_realtime_attribution_metric_sink")))] | length')
+test "$running" -eq 1
+echo "realtime metric job is running"
+'@
+
+$archiveYesterdayMetrics = @'
+set -euo pipefail
+SR="$(docker ps --filter label=com.docker.compose.project=ustc_lakehouse --filter label=com.docker.compose.service=starrocks -q | head -n1)"
+test -n "$SR"
+sql=$(cat <<'SQL'
+INSERT INTO ad_ads.realtime_ad_metrics_daily
+SELECT
+  DATE(window_start_local) AS stat_date,
+  loop_type,
+  commerce_scene,
+  SUM(spend) AS spend,
+  SUM(attributed_gmv) AS attributed_gmv,
+  SUM(impressions) AS impressions,
+  SUM(clicks) AS clicks,
+  SUM(paid_orders) AS paid_orders,
+  DATE_ADD(NOW(), INTERVAL 8 HOUR) AS updated_at
+FROM ad_ads.v_realtime_ad_metrics
+WHERE DATE(window_start_local) < DATE(DATE_ADD(NOW(), INTERVAL 8 HOUR))
+GROUP BY DATE(window_start_local), loop_type, commerce_scene;
+SQL
+)
+printf '%s\n' "$sql" | docker exec -i "$SR" bash -lc 'mysql -h127.0.0.1 -P9030 -uroot'
+echo "completed realtime cumulative dates archived"
+'@
+
+$deleteExpiredRealtimeWindows = @'
+set -euo pipefail
+SR="$(docker ps --filter label=com.docker.compose.project=ustc_lakehouse --filter label=com.docker.compose.service=starrocks -q | head -n1)"
+test -n "$SR"
+sql="DELETE FROM ad_ads.realtime_ad_attribution_metrics_10s WHERE DATE(window_start) < DATE(DATE_ADD(NOW(), INTERVAL 8 HOUR));"
+printf '%s\n' "$sql" | docker exec -i "$SR" bash -lc 'mysql -h127.0.0.1 -P9030 -uroot'
+echo "expired realtime 10-second windows deleted after archival"
+'@
+
+$verifyBusinessDayRollover = @'
+set -euo pipefail
+SR="$(docker ps --filter label=com.docker.compose.project=ustc_lakehouse --filter label=com.docker.compose.service=starrocks -q | head -n1)"
+test -n "$SR"
+sql="SELECT COUNT(*) FROM ad_ads.v_realtime_ad_metrics_today WHERE DATE(window_start_local) <> DATE(DATE_ADD(NOW(), INTERVAL 8 HOUR));"
+wrong=$(printf '%s\n' "$sql" | docker exec -i "$SR" bash -lc 'mysql -N -h127.0.0.1 -P9030 -uroot')
+test "$wrong" = "0"
+echo "business-day view has switched to today"
+'@
+
+$dailyRolloverReceipt = @'
+set -euo pipefail
+SR="$(docker ps --filter label=com.docker.compose.project=ustc_lakehouse --filter label=com.docker.compose.service=starrocks -q | head -n1)"
+test -n "$SR"
+sql="SELECT COUNT(*) FROM ad_ads.realtime_ad_metrics_daily WHERE stat_date < DATE(DATE_ADD(NOW(), INTERVAL 8 HOUR));"
+archived=$(printf '%s\n' "$sql" | docker exec -i "$SR" bash -lc 'mysql -N -h127.0.0.1 -P9030 -uroot')
+mkdir -p /workspace/dolphinscheduler/runs
+printf 'daily rollover completed at %s; archived_rows=%s\n' "$(date -Iseconds)" "$archived" > /workspace/dolphinscheduler/runs/daily-rollover-workflow-execution.txt
+cat /workspace/dolphinscheduler/runs/daily-rollover-workflow-execution.txt
+'@
+
+$dailyRolloverTasks = @(
+  (New-TaskSpec "verify_realtime_metric_job" "Verify the persistent realtime metric job before sealing the day" $verifyDailyRealtimeJob 100 220),
+  (New-TaskSpec "archive_yesterday_metrics" "Upsert all completed dates into the StarRocks daily archive" $archiveYesterdayMetrics 390 220),
+  (New-TaskSpec "delete_expired_realtime_windows" "Delete pre-today 10-second windows only after archival succeeds" $deleteExpiredRealtimeWindows 700 220),
+  (New-TaskSpec "verify_business_day_rollover" "Verify the current-day view contains no previous-day windows" $verifyBusinessDayRollover 1010 220),
+  (New-TaskSpec "publish_daily_rollover_receipt" "Write the daily rollover execution receipt" $dailyRolloverReceipt 1320 220)
+)
+$dailyRolloverEdges = @(
+  [ordered]@{ from = "verify_realtime_metric_job"; to = "archive_yesterday_metrics" },
+  [ordered]@{ from = "archive_yesterday_metrics"; to = "delete_expired_realtime_windows" },
+  [ordered]@{ from = "delete_expired_realtime_windows"; to = "verify_business_day_rollover" },
+  [ordered]@{ from = "verify_business_day_rollover"; to = "publish_daily_rollover_receipt" }
+)
+
 $offlineCode = Set-WorkflowDefinition $projectCode $offlineWorkflowName "Daily 02:00 bounded ODS/DIM/DWD/DWS/DM/ADS load" $offlineTasks $offlineEdges "SERIAL_WAIT"
 $realtimeCode = Set-WorkflowDefinition $projectCode $realtimeWorkflowName "Manual stop-and-restart operations for the single Kafka-to-StarRocks Java streaming job" $realtimeTasks $realtimeEdges "SERIAL_WAIT"
+$dailyRolloverCode = Set-WorkflowDefinition $projectCode $dailyRolloverWorkflowName "Daily 00:05 archive, expired-window cleanup, and business-day rollover validation" $dailyRolloverTasks $dailyRolloverEdges "SERIAL_WAIT"
 
-Enable-DailySchedule $projectCode $offlineCode
+Enable-Schedule $projectCode $offlineCode "0 0 2 * * ?" "daily offline 02:00 Asia/Shanghai"
+Enable-Schedule $projectCode $dailyRolloverCode "0 5 0 * * ?" "daily realtime rollover 00:05 Asia/Shanghai"
 
 if (-not $NoTrigger) {
   if ($TriggerOffline) { Start-Workflow $projectCode $offlineCode }
   if ($TriggerRealtime) { Start-Workflow $projectCode $realtimeCode }
+  if ($TriggerDailyRollover) { Start-Workflow $projectCode $dailyRolloverCode }
 }
 
 Write-Host "Registered thesis workflows:"
 Write-Host "  offline=$offlineWorkflowName code=$offlineCode schedule=02:00 Asia/Shanghai"
 Write-Host "  realtime=$realtimeWorkflowName code=$realtimeCode schedule=manual"
+Write-Host "  daily-rollover=$dailyRolloverWorkflowName code=$dailyRolloverCode schedule=00:05 Asia/Shanghai"
 Write-Host "Open $BaseUrl/ui/"

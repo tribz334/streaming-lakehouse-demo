@@ -5,7 +5,7 @@ from superset.app import create_app
 
 
 DASHBOARD_TITLE = "广告离线核心指标大盘"
-DATASET_NAME = "v_creative_offline_metrics"
+DATASET_NAME = "v_offline_core_metrics"
 DEFAULT_TIME_RANGE = "Last 14 days"
 
 
@@ -86,7 +86,6 @@ def detail_table():
                 "campaign_objective",
                 "unit_name",
                 "creative_name",
-                "creative_format",
             ],
             "metrics": [
                 "total_cost",
@@ -160,6 +159,7 @@ def create_chart(db, Slice, datasource, spec):
 
     query = {
         "filters": [],
+        "granularity": x_axis or datasource.main_dttm_col or "stat_date",
         "extras": {"having": "", "where": ""},
         "applied_time_extras": {},
         "columns": query_columns,
@@ -271,26 +271,20 @@ def main():
             db.session.add(dashboard)
             db.session.flush()
 
+        # The finalized daily dashboard deliberately uses the same names and
+        # formulas as the realtime dashboard. Unlike the former latest-partition
+        # cards, every metric is recomputed over the selected date window.
         specs = [
-            metric_card(datasource, "昨日 Cost", "latest_cost", "最新完整分区广告消耗"),
-            metric_card(datasource, "昨日广告 GMV", "latest_gmv", "最新完整分区成交金额"),
-            metric_card(datasource, "昨日曝光", "latest_impressions", "最新完整分区曝光量"),
-            metric_card(datasource, "昨日点击", "latest_clicks", "最新完整分区点击量"),
-            metric_card(datasource, "昨日转化", "latest_conversions", "最新完整分区转化量"),
-            metric_card(datasource, "昨日订单", "latest_orders", "最新完整分区订单量"),
-            metric_card(datasource, "昨日 ROAS", "latest_roas", "广告 GMV / Cost", ".2f"),
-            metric_card(datasource, "昨日 CTR", "latest_ctr", "点击 / 曝光", ".2%"),
-            metric_card(datasource, "昨日 CVR", "latest_cvr", "转化 / 点击", ".2%"),
-            timeseries("近两周 Cost 与 GMV 趋势", ["total_cost", "total_gmv"]),
-            timeseries(
-                "近两周流量与转化趋势",
-                ["total_impressions", "total_clicks", "total_conversions", "total_orders"],
-            ),
-            timeseries("近两周效率趋势", ["roas", "ctr", "cvr"], ".3f"),
-            bar_chart("广告主 GMV 贡献排名", "total_gmv", "advertiser_name"),
-            bar_chart("投放目标 GMV 结构", "total_gmv", "campaign_objective", row_limit=10),
-            bar_chart("创意 GMV 排名", "total_gmv", "creative_name", row_limit=20),
-            detail_table(),
+            metric_card(datasource, "广告消耗", "total_spend", ""),
+            metric_card(datasource, "内循环消耗", "inner_loop_spend", ""),
+            metric_card(datasource, "内循环GMV", "inner_loop_gmv", ""),
+            metric_card(datasource, "ROAS", "inner_loop_roas", "内循环GMV / 内循环消耗", ".2f"),
+            metric_card(datasource, "短视频GMV", "short_video_gmv", ""),
+            metric_card(datasource, "直播GMV", "live_gmv", ""),
+            metric_card(datasource, "电商GMV", "shop_gmv", ""),
+            metric_card(datasource, "点击率（CTR）", "ctr", "点击数 / 曝光数", ".2%"),
+            metric_card(datasource, "转化率（CVR）", "cvr", "支付订单数 / 点击数", ".2%"),
+            timeseries("广告消耗与内循环GMV日趋势", ["内循环GMV", "广告消耗"]),
         ]
         charts = [create_chart(db, Slice, datasource, spec) for spec in specs]
 
@@ -303,12 +297,10 @@ def main():
             "DASHBOARD_VERSION_KEY": "v2",
         }
         rows = [
-            ("ROW_VOLUME_KPI", charts[0:6], 24),
-            ("ROW_EFFICIENCY_KPI", charts[6:9], 24),
-            ("ROW_BUSINESS_TREND", charts[9:11], 52),
-            ("ROW_EFFICIENCY_TREND", charts[11:12], 44),
-            ("ROW_RANKING", charts[12:15], 48),
-            ("ROW_CREATIVE_DETAIL", charts[15:16], 72),
+            ("ROW_CORE_KPI", charts[0:4], 24),
+            ("ROW_SCENE_KPI", charts[4:7], 24),
+            ("ROW_RATE_KPI", charts[7:9], 24),
+            ("ROW_BUSINESS_TREND", charts[9:10], 52),
         ]
         for row_id, row_charts, height in rows:
             add_row(layout, root, grid, row_id, row_charts, height)
@@ -316,7 +308,7 @@ def main():
 
         time_filter = {
             "id": "NATIVE_FILTER-OFFLINE_TIME",
-            "name": "统计日期",
+            "name": "统计时间范围",
             "filterType": "filter_time",
             "targets": [{"datasetId": datasource.id}],
             "defaultDataMask": {
@@ -326,15 +318,9 @@ def main():
             "cascadeParentIds": [],
             "scope": {"rootPath": [root], "excluded": []},
             "type": "NATIVE_FILTER",
-            "description": "默认查看近 14 天，可自由调整日期范围",
+            "description": "默认查看近 14 天；可选择最近一周、最近一个月或自定义起止日期",
         }
-        native_filters = [
-            time_filter,
-            select_filter("NATIVE_FILTER-ADVERTISER", "广告主", "advertiser_name", datasource.id, root),
-            select_filter("NATIVE_FILTER-INDUSTRY", "行业", "industry", datasource.id, root),
-            select_filter("NATIVE_FILTER-OBJECTIVE", "投放目标", "campaign_objective", datasource.id, root),
-            select_filter("NATIVE_FILTER-FORMAT", "创意形式", "creative_format", datasource.id, root),
-        ]
+        native_filters = [time_filter]
 
         chart_ids = [chart.id for chart in charts]
         dashboard.position_json = json.dumps(layout, ensure_ascii=False)
@@ -366,8 +352,8 @@ def main():
         )
         dashboard.published = True
         dashboard.description = (
-            "基于创意粒度离线 ADS 数据集的昨日核心指标、近两周趋势、"
-            "贡献排名与广告主/计划/创意下钻分析。"
+            "基于每日封存数据的广告离线核心指标；口径与实时大盘一致，"
+            "所有卡片和趋势均随统计时间范围重新聚合。"
         )
         dashboard.created_by_fk = owner.id
         dashboard.changed_by_fk = owner.id

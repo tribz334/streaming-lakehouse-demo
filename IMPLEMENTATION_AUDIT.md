@@ -7,14 +7,14 @@
 | 论文能力 | 当前实现 | 证据 |
 | --- | --- | --- |
 | Kafka 埋点事件接入 | 事件生成器持续写入 `ods_log` | `generator/produce_events.py`、Kafka 容器 |
-| MySQL 业务数据源 | 广告主、计划、创意、订单数据 | `mysql/init`、MySQL 容器 |
-| Flink CDC 业务库同步 | Flink CDC 3.6 完成全量快照并持续消费 binlog，维护广告主、计划、单元、创意和订单 Paimon 表 | `flink-cdc/mysql-to-paimon.yaml`、`submit-cdc-pipeline.ps1` |
+| MySQL 业务数据源 | 广告主、计划、创意、订单权威数据与计费明细 `ad_bill_detail` | `mysql/init`、MySQL 容器 |
+| Flink CDC 业务库同步 | CDC Pipeline 维护 Paimon DIM、订单与计费表；实时 Java 作业直接消费订单、计费 binlog，并与 Kafka 行为流合流 | `flink-cdc/mysql-to-paimon.yaml`、`OrderCdcSource.java`、`AdBillCdcSource.java` |
 | Paimon 湖仓分层 | 保存 ODS/DWD/DIM 及离线 DWS/DM/ADS，支持批量回溯与主题加工 | `00_catalogs_and_tables.sql`、`01_model_tables.sql` |
 | 单机精简拓扑 | 1 Kafka Broker、1 Flink TM、1 采集实例，可选 1 StarRocks FE + 1 BE | `docker-compose.yml` |
 | Flink 流批处理 | 一个 Java 流任务处理实时短窗口，SQL 批任务刷新离线 DWS/DM/ADS | `flink-java`、`scripts/windows/*.ps1`、`scripts/linux/*.sh` |
 | 订单生命周期 | Paimon partial-update 主键表 | `dwd_order_lifecycle_df` |
-| 核心广告指标 | Java Flink 作业完成10秒窗口聚合并直接写入保留连续窗口的StarRocks主键表 | `flink-java`、`realtime_ad_metrics_10s` |
-| 离线核心指标大盘 | 创意粒度离线 ADS、最新完整分区 KPI、近两周趋势、多维筛选和创意下钻 | `13_ads_creative_offline.sql`、`bootstrap_offline_dashboard.py` |
+| 核心广告指标 | Java Flink 作业完成 10 秒窗口聚合；大盘按天累计展示总消耗、内循环 GMV，并按“内循环 GMV / 内循环消耗”计算 ROAS | `flink-java`、`realtime_ad_metrics_10s`、`bootstrap_dashboard.py` |
+| 离线核心指标大盘 | 每日封存 ADS、与实时一致的内循环口径、可配置统计时间范围和日趋势 | `realtime_ad_metrics_daily`、`v_offline_core_metrics`、`bootstrap_offline_dashboard.py` |
 | 广告主留存 | 次日、7 日、15 日、30 日留存口径 | `10_ads_retention.sql` |
 | Schema Registry | Apicurio JSON Schema 注册与查询 | `register-schemas.ps1` |
 | StarRocks OLAP | 实时指标由 Flink JDBC Sink 直接 UPSERT；离线 ADS 使用快照 | `StarRocksMetricSink.java`、`init_starrocks.sql`、`sync-starrocks-olap.ps1` |

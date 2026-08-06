@@ -13,6 +13,8 @@ if ($metricTableDdl.Count -gt 0 -and ($metricTableDdl -join "`n") -notmatch "PRI
 
 $cleanupSql = @"
 CREATE DATABASE IF NOT EXISTS ad_ads;
+DROP VIEW IF EXISTS ad_ads.v_realtime_ad_metrics_latest_10s;
+DROP VIEW IF EXISTS ad_ads.v_realtime_ad_metrics_today;
 DROP VIEW IF EXISTS ad_ads.v_realtime_ad_metrics;
 $metricTableResetSql
 DROP VIEW IF EXISTS ad_ads.v_advertiser_retention;

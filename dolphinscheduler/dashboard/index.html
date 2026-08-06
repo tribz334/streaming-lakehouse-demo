@@ -27,64 +27,114 @@
 <body>
   <header>
     <h1>USTC Lakehouse Workflow Dashboard</h1>
-    <div>Generated at 2026-07-04 01:50:09. This is the local runnable scheduler fallback for DolphinScheduler.</div>
+    <div>Generated at 2026-07-23 06:21:02. This is the local runnable scheduler fallback for DolphinScheduler.</div>
   </header>
   <main>
     <div class="summary">
-      <div class="card"><div class="label">Latest Run</div><div class="value">20260626-231620</div></div>
-      <div class="card"><div class="label">Status</div><div class="value ok">SUCCESS</div></div>
-      <div class="card"><div class="label">Duration</div><div class="value">105s</div></div>
+      <div class="card"><div class="label">Latest Run</div><div class="value">-</div></div>
+      <div class="card"><div class="label">Status</div><div class="value bad">NO_RUN</div></div>
+      <div class="card"><div class="label">Duration</div><div class="value">-</div></div>
     </div>
     <section>
       <h2>Latest Run Steps</h2>
-      <table><thead><tr><th>Step</th><th>Command</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead><tbody><tr><td>stop_flink_jobs</td><td>./scripts/stop-flink-jobs.ps1</td><td class="ok">SUCCESS</td><td>2s</td><td></td></tr>
-<tr><td>init_flink_ddl</td><td>./scripts/init-flink-ddl.ps1</td><td class="ok">SUCCESS</td><td>7s</td><td></td></tr>
-<tr><td>run_ads_batches</td><td>./scripts/run-ads-batches.ps1</td><td class="ok">SUCCESS</td><td>44s</td><td></td></tr>
-<tr><td>sync_starrocks_olap</td><td>./scripts/sync-starrocks-olap.ps1</td><td class="ok">SUCCESS</td><td>37s</td><td></td></tr>
-<tr><td>register_schemas</td><td>./scripts/register-schemas.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
-<tr><td>export_governance_metadata</td><td>./scripts/export-governance-metadata.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
-<tr><td>export_datahub_mcp</td><td>./scripts/export-datahub-mcp.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
-<tr><td>generate_ops_dashboard</td><td>./scripts/generate-ops-dashboard.ps1</td><td class="ok">SUCCESS</td><td>6s</td><td></td></tr>
-<tr><td>submit_streaming_jobs</td><td>./scripts/submit-streaming-jobs.ps1</td><td class="ok">SUCCESS</td><td>0s</td><td></td></tr>
-<tr><td>verify_stack</td><td>./scripts/verify-stack.ps1</td><td class="ok">SUCCESS</td><td>7s</td><td></td></tr>
-</tbody></table>
+      <table><thead><tr><th>Step</th><th>Command</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead><tbody><tr><td colspan="5">No workflow run has been recorded yet.</td></tr></tbody></table>
     </section>
     <section>
       <h2>Recent Runs</h2>
-      <table><thead><tr><th>Run ID</th><th>Status</th><th>Started</th><th>Duration</th></tr></thead><tbody><tr><td>20260626-231620</td><td class="ok">SUCCESS</td><td>06/26/2026 23:16:20</td><td>105s</td></tr>
-</tbody></table>
+      <table><thead><tr><th>Run ID</th><th>Status</th><th>Started</th><th>Duration</th></tr></thead><tbody><tr><td colspan="4">No historical runs.</td></tr></tbody></table>
     </section>
     <section>
       <h2>DolphinScheduler Template</h2>
       <pre>project: ustc-streaming-lakehouse-demo
-workflow: ad_lakehouse_daily_refresh
-description: &gt;
-  Linux task blueprint for the thesis lakehouse stack. The scripts are suitable
-  for a Linux host or a DolphinScheduler worker with Docker CLI access.
-tasks:
-  - name: init_flink_ddl
-    type: SHELL
-    command: bash ./scripts/linux/init-flink-ddl.sh
-  - name: submit_streaming_jobs
-    type: SHELL
-    command: bash ./scripts/linux/submit-streaming-jobs.sh
-    depends_on:
-      - init_flink_ddl
-  - name: run_ads_batches
-    type: SHELL
-    command: bash ./scripts/linux/run-ads-batches.sh
-    depends_on:
-      - submit_streaming_jobs
-  - name: sync_starrocks_olap
-    type: SHELL
-    command: bash ./scripts/linux/sync-starrocks.sh
-    depends_on:
-      - run_ads_batches
-  - name: verify_stack
-    type: SHELL
-    command: bash ./scripts/linux/verify-stack.sh
-    depends_on:
-      - sync_starrocks_olap
+
+workflows:
+  - name: ad_lakehouse_daily_offline
+    description: Daily bounded lakehouse load defined by the thesis.
+    schedule:
+      cron: &quot;0 0 2 * * ?&quot;
+      timezone: Asia/Shanghai
+    tasks:
+      - name: prepare_catalogs
+        type: SHELL
+      - name: ods_snapshot_check
+        type: FLINK_SQL_BATCH
+        sql: flink/sql/06_offline_ods_check.sql
+        depends_on: [prepare_catalogs]
+      - name: verify_cdc_dimensions
+        type: FLINK_REST
+        depends_on: [prepare_catalogs]
+      - name: dws_theme_load
+        type: FLINK_SQL_BATCH
+        sql: flink/sql/08_offline_dws.sql
+        depends_on: [ods_snapshot_check, verify_cdc_dimensions]
+      - name: dm_layer_load
+        type: FLINK_SQL_BATCH
+        sql: flink/sql/09_offline_dm.sql
+        depends_on: [dws_theme_load]
+      - name: ads_retention
+        type: FLINK_SQL_BATCH
+        sql: flink/sql/10_ads_retention.sql
+        depends_on: [ods_snapshot_check, verify_cdc_dimensions]
+      - name: ads_attribution
+        type: FLINK_SQL_BATCH
+        sql: flink/sql/11_ads_attribution.sql
+        depends_on: [dm_layer_load]
+      - name: ads_antifraud
+        type: FLINK_SQL_BATCH
+        sql: flink/sql/12_ads_fraud.sql
+        depends_on: [dm_layer_load]
+      - name: ads_creative_offline
+        type: FLINK_SQL_BATCH
+        sql: flink/sql/13_ads_creative_offline.sql
+        depends_on: [dws_theme_load]
+      - name: publish_offline_receipt
+        type: SHELL
+        depends_on: [ads_retention, ads_attribution, ads_antifraud, ads_creative_offline]
+
+  - name: ad_lakehouse_realtime_operations
+    description: Manual stop-and-restart workflow for persistent streaming jobs.
+    schedule: manual
+    tasks:
+      - name: stop_existing_stream_jobs
+        type: FLINK_REST
+      - name: prepare_realtime_resources
+        type: SHELL
+        depends_on: [stop_existing_stream_jobs]
+      - name: start_mysql_cdc
+        type: FLINK_CDC_PIPELINE
+        yaml: flink-cdc/mysql-to-paimon.yaml
+        depends_on: [prepare_realtime_resources]
+      - name: start_realtime_java_job
+        type: SHELL
+        command: scripts/linux/submit-streaming-jobs.sh
+        depends_on: [prepare_realtime_resources]
+      - name: verify_realtime_jobs
+        type: FLINK_REST
+        depends_on: [start_realtime_java_job, start_mysql_cdc]
+
+  - name: ad_realtime_daily_rollover
+    description: Archive completed dates, delete expired 10-second windows, and validate the new business day.
+    schedule:
+      cron: &quot;0 5 0 * * ?&quot;
+      timezone: Asia/Shanghai
+    tasks:
+      - name: verify_realtime_metric_job
+        type: FLINK_REST
+      - name: archive_yesterday_metrics
+        type: STARROCKS_SQL
+        table: ad_ads.realtime_ad_metrics_daily
+        depends_on: [verify_realtime_metric_job]
+      - name: delete_expired_realtime_windows
+        type: STARROCKS_SQL
+        table: ad_ads.realtime_ad_attribution_metrics_10s
+        depends_on: [archive_yesterday_metrics]
+      - name: verify_business_day_rollover
+        type: STARROCKS_SQL
+        view: ad_ads.v_realtime_ad_metrics_today
+        depends_on: [delete_expired_realtime_windows]
+      - name: publish_daily_rollover_receipt
+        type: SHELL
+        depends_on: [verify_business_day_rollover]
 </pre>
     </section>
   </main>

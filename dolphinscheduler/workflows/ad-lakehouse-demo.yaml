@@ -53,26 +53,38 @@ workflows:
       - name: prepare_realtime_resources
         type: SHELL
         depends_on: [stop_existing_stream_jobs]
-      - name: start_ods_stream
-        type: FLINK_SQL_STREAM
-        sql: flink/sql/02_realtime_ods.sql
-        depends_on: [prepare_realtime_resources]
       - name: start_mysql_cdc
         type: FLINK_CDC_PIPELINE
         yaml: flink-cdc/mysql-to-paimon.yaml
         depends_on: [prepare_realtime_resources]
-      - name: start_dwd_stream
-        type: FLINK_SQL_STREAM
-        sql: flink/sql/03_realtime_dwd.sql
-        depends_on: [start_ods_stream, start_mysql_cdc]
-      - name: start_dws_metric_stream
-        type: FLINK_SQL_STREAM
-        sql: flink/sql/04_realtime_dws_metrics.sql
-        depends_on: [start_dwd_stream]
-      - name: start_starrocks_metric_relay
-        type: FLINK_SQL_STREAM
-        sql: flink/sql/05_realtime_starrocks_relay.sql
-        depends_on: [start_dws_metric_stream]
+      - name: start_realtime_java_job
+        type: SHELL
+        command: scripts/linux/submit-streaming-jobs.sh
+        depends_on: [prepare_realtime_resources]
       - name: verify_realtime_jobs
         type: FLINK_REST
-        depends_on: [start_starrocks_metric_relay]
+        depends_on: [start_realtime_java_job, start_mysql_cdc]
+
+  - name: ad_realtime_daily_rollover
+    description: Archive completed dates, delete expired 10-second windows, and validate the new business day.
+    schedule:
+      cron: "0 5 0 * * ?"
+      timezone: Asia/Shanghai
+    tasks:
+      - name: verify_realtime_metric_job
+        type: FLINK_REST
+      - name: archive_yesterday_metrics
+        type: STARROCKS_SQL
+        table: ad_ads.realtime_ad_metrics_daily
+        depends_on: [verify_realtime_metric_job]
+      - name: delete_expired_realtime_windows
+        type: STARROCKS_SQL
+        table: ad_ads.realtime_ad_attribution_metrics_10s
+        depends_on: [archive_yesterday_metrics]
+      - name: verify_business_day_rollover
+        type: STARROCKS_SQL
+        view: ad_ads.v_realtime_ad_metrics_today
+        depends_on: [delete_expired_realtime_windows]
+      - name: publish_daily_rollover_receipt
+        type: SHELL
+        depends_on: [verify_business_day_rollover]

@@ -1,44 +1,58 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ustc.example/schema/ods_log.schema.json",
-  "title": "ODS Ad Log Event",
+  "title": "ODS Shared Tracking Log Event",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "event_id",
-    "ts",
-    "advertiser_id",
-    "campaign_id",
-    "unit_id",
-    "creative_id",
-    "media",
-    "region",
-    "user_id",
-    "event_type",
-    "bid_price",
-    "spend",
-    "gmv",
-    "order_id",
-    "schema_version"
-  ],
+  "required": ["log_type", "event_id", "ts", "user_id", "event_type", "schema_version"],
   "properties": {
+    "log_type": { "type": "string", "enum": ["ad", "page"] },
     "event_id": { "type": "string" },
     "ts": { "type": "string", "format": "date-time" },
-    "advertiser_id": { "type": "string" },
-    "campaign_id": { "type": "string" },
-    "unit_id": { "type": "string" },
-    "creative_id": { "type": "string" },
-    "media": { "type": "string" },
-    "region": { "type": "string" },
     "user_id": { "type": "string" },
     "event_type": {
       "type": "string",
-      "enum": ["impression", "click", "conversion", "order"]
+      "pattern": "^[a-z][a-z0-9_]*$"
     },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "advertiser_id": { "type": "string" },
+    "campaign_id": { "type": "string" },
+    "product_id": { "type": "string" },
+    "pid": { "type": "string" },
+    "unit_id": { "type": "string" },
+    "creative_id": { "type": "string" },
+    "media": { "type": "string" },
+    "commerce_scene": {
+      "type": "string",
+      "enum": ["live", "short_video", "shop", "external"]
+    },
+    "traffic_type": { "type": "string", "enum": ["paid", "organic"] },
+    "region": { "type": "string" },
     "bid_price": { "type": "number", "minimum": 0 },
-    "spend": { "type": "number", "minimum": 0 },
-    "gmv": { "type": "number", "minimum": 0 },
-    "order_id": { "type": ["string", "null"] },
-    "schema_version": { "type": "integer", "minimum": 1 }
-  }
+    "page_id": { "type": "string" },
+    "last_page_id": { "type": ["string", "null"] },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "device_id": { "type": "string" },
+    "source": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "log_type": { "const": "ad" } } },
+      "then": {
+        "properties": {
+          "event_type": { "enum": ["impression", "click", "conversion"] }
+        },
+        "required": [
+          "advertiser_id", "campaign_id", "product_id", "pid", "unit_id",
+          "creative_id", "media", "commerce_scene", "traffic_type", "region", "bid_price"
+        ]
+      }
+    },
+    {
+      "if": { "properties": { "log_type": { "const": "page" } } },
+      "then": {
+        "required": ["page_id", "duration_ms", "device_id", "source"]
+      }
+    }
+  ]
 }
