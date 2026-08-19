@@ -7,8 +7,8 @@ $schemaPath = Join-Path $root "schemas/ods_log.schema.json"
 $schema = Get-Content -Raw -Path $schemaPath
 $artifactId = "ods_log-value"
 $groupId = "ad-demo"
-$artifactVersion = "5.0.0"
-$eventSchemaVersion = "5"
+$artifactVersion = "10.0.0"
+$eventSchemaVersion = "10"
 
 $ready = $false
 $deadline = (Get-Date).AddSeconds(90)

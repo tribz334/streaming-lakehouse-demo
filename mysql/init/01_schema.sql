@@ -1,7 +1,7 @@
 CREATE DATABASE IF NOT EXISTS ad_ods;
 USE ad_ods;
 
-CREATE TABLE IF NOT EXISTS advertiser (
+CREATE TABLE IF NOT EXISTS advertiser_info (
   advertiser_id VARCHAR(32) PRIMARY KEY,
   advertiser_name VARCHAR(128) NOT NULL,
   industry VARCHAR(64) NOT NULL,
@@ -11,44 +11,95 @@ CREATE TABLE IF NOT EXISTS advertiser (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS campaign (
+CREATE TABLE IF NOT EXISTS campaign_info (
   campaign_id VARCHAR(32) PRIMARY KEY,
   advertiser_id VARCHAR(32) NOT NULL,
   campaign_name VARCHAR(128) NOT NULL,
-  objective VARCHAR(32) NOT NULL,
+  promotion_goal VARCHAR(32) NOT NULL DEFAULT '电商下单推广',
+  ad_type VARCHAR(32) NOT NULL DEFAULT '展示广告',
+  bidding_strategy VARCHAR(32) NOT NULL DEFAULT '成本优先',
+  budget_mode VARCHAR(32) NOT NULL DEFAULT '不限',
   budget DECIMAL(18,2) NOT NULL,
   status VARCHAR(32) NOT NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_campaign_advertiser FOREIGN KEY (advertiser_id) REFERENCES advertiser(advertiser_id)
+  CONSTRAINT fk_campaign_advertiser FOREIGN KEY (advertiser_id) REFERENCES advertiser_info(advertiser_id)
 );
 
-CREATE TABLE IF NOT EXISTS `unit` (
+CREATE TABLE IF NOT EXISTS unit_info (
   unit_id VARCHAR(32) PRIMARY KEY,
   campaign_id VARCHAR(32) NOT NULL,
-  unit_name VARCHAR(128) NOT NULL,
-  bid_type VARCHAR(32) NOT NULL,
-  bid_amount DECIMAL(18,4) NOT NULL,
+  `广告组名称` VARCHAR(128) NOT NULL,
+  `投放位置` VARCHAR(32) NOT NULL DEFAULT '主站',
+  `推广落地页网址` VARCHAR(255) NOT NULL DEFAULT 'https://landing.example.com/default',
+  `关联商品ID` VARCHAR(64) NULL,
+  `目标人群` JSON NULL,
+  `投放日期类型` VARCHAR(32) NOT NULL DEFAULT '长期投放',
+  `开始日期` DATE NOT NULL DEFAULT (CURRENT_DATE),
+  `结束日期` DATE NULL,
+  `单日预算模式` VARCHAR(32) NOT NULL DEFAULT '不限',
+  `单日预算` JSON NULL,
+  `出价方式` VARCHAR(32) NOT NULL DEFAULT 'oCPM',
+  `转化目标` VARCHAR(32) NOT NULL DEFAULT '下单',
+  `转化出价` DECIMAL(18,4) NOT NULL,
   status VARCHAR(32) NOT NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_unit_campaign FOREIGN KEY (campaign_id) REFERENCES campaign(campaign_id)
+  CONSTRAINT fk_unit_campaign FOREIGN KEY (campaign_id) REFERENCES campaign_info(campaign_id)
 );
 
-CREATE TABLE IF NOT EXISTS creative (
+CREATE TABLE IF NOT EXISTS creative_info (
   creative_id VARCHAR(32) PRIMARY KEY,
-  campaign_id VARCHAR(32) NOT NULL,
   unit_id VARCHAR(32) NOT NULL,
   creative_name VARCHAR(128) NOT NULL,
   format VARCHAR(32) NOT NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_creative_campaign FOREIGN KEY (campaign_id) REFERENCES campaign(campaign_id),
-  CONSTRAINT fk_creative_unit FOREIGN KEY (unit_id) REFERENCES `unit`(unit_id)
+  CONSTRAINT fk_creative_unit FOREIGN KEY (unit_id) REFERENCES unit_info(unit_id)
 );
 
-CREATE TABLE IF NOT EXISTS `order` (
+CREATE TABLE IF NOT EXISTS user_info (
+  user_id VARCHAR(32) PRIMARY KEY,
+  user_type VARCHAR(32) NOT NULL DEFAULT 'consumer',
+  register_channel VARCHAR(32) NOT NULL DEFAULT 'organic',
+  region VARCHAR(64) NULL,
+  membership_level VARCHAR(32) NOT NULL DEFAULT 'normal',
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_active_at TIMESTAMP NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user_registered_at (registered_at),
+  INDEX idx_user_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS shop_info (
+  shop_id VARCHAR(32) PRIMARY KEY,
+  shop_name VARCHAR(128) NOT NULL,
+  shop_type VARCHAR(32) NOT NULL DEFAULT 'flagship',
+  region VARCHAR(64) NULL,
+  business_status VARCHAR(32) NOT NULL DEFAULT 'open',
+  opened_at DATE NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS product_info (
+  product_id VARCHAR(64) PRIMARY KEY,
+  shop_id VARCHAR(32) NULL,
+  product_name VARCHAR(128) NOT NULL,
+  brand VARCHAR(128) NULL,
+  category VARCHAR(64) NULL,
+  `销售价格` DECIMAL(18,2) NOT NULL DEFAULT 0,
+  `库存数量` INT NOT NULL DEFAULT 0,
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_product_shop (shop_id),
+  INDEX idx_product_category (category),
+  CONSTRAINT fk_product_shop FOREIGN KEY (shop_id) REFERENCES shop_info(shop_id)
+);
+
+CREATE TABLE IF NOT EXISTS order_detail (
   order_id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(32) NOT NULL,
   product_id VARCHAR(64) NOT NULL,
-  gmv DECIMAL(18,2) NOT NULL,
+  order_amount DECIMAL(18,2) NOT NULL,
   order_status VARCHAR(32) NOT NULL,
   create_time TIMESTAMP NOT NULL,
   payment_time TIMESTAMP NULL,
@@ -59,7 +110,7 @@ CREATE TABLE IF NOT EXISTS `order` (
 
 -- Authoritative advertising billing facts. SDK ad_log contains behavior only;
 -- billable cost is generated by the advertising billing service.
-CREATE TABLE IF NOT EXISTS ad_bill (
+CREATE TABLE IF NOT EXISTS bill_detail (
   bill_id VARCHAR(64) PRIMARY KEY,
   advertiser_id VARCHAR(32) NOT NULL,
   campaign_id VARCHAR(32) NOT NULL,

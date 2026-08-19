@@ -10,11 +10,10 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 
 /**
- * DWD log parser and dirty-data splitter, named after section 4.3.3 while
- * retaining this project's advertising-only ods_log schema.
+ * Parses the raw SDK report retained in ods_log. Page data is routed to its
+ * side output and every item in actions is flattened into one DWD AdEvent.
  */
 public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent> {
     private final OutputTag<PageLogEvent> pageOutputTag;
@@ -36,54 +35,60 @@ public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent
     @Override
     public void processElement(String value, Context context, Collector<AdEvent> output) {
         try {
-            JsonNode node = objectMapper.readTree(value);
-            String eventType = requiredText(node, "event_type");
-            // log_type describes the event family and is therefore the routing key.
-            // event_type describes the concrete action and may evolve independently
-            // (for example page_scroll or button_click can be added without changing
-            // this process function).
-            String logType = requiredText(node, "log_type");
-            if ("page".equals(logType)) {
-                context.output(pageOutputTag, toPageLog(node, eventType));
-                return;
+            JsonNode report = objectMapper.readTree(value);
+            JsonNode common = requiredObject(report, "common");
+            requiredLong(report, "app_id");
+            requiredLong(report, "log_id");
+            requiredText(report, "report_id");
+            requiredLong(report, "ts");
+
+            JsonNode page = report.get("page");
+            if (page != null && !page.isNull()) {
+                context.output(pageOutputTag, toPageLog(page, common));
             }
-            if (!"ad".equals(logType) || !isAdAction(eventType)) {
-                throw new IllegalArgumentException("unsupported log_type/event_type: "
-                        + logType + "/" + eventType);
+
+            JsonNode actions = report.get("actions");
+            if (actions == null || !actions.isArray()) {
+                throw new IllegalArgumentException("missing or invalid field: actions");
             }
-            AdEvent event = new AdEvent();
-            event.setEventId(requiredText(node, "event_id"));
-            event.setEventTimeMillis(OffsetDateTime.parse(requiredText(node, "ts"))
-                    .toInstant().toEpochMilli());
-            event.setUserId(requiredText(node, "user_id"));
-            event.setPid(requiredText(node, "pid"));
-            event.setCreativeId(requiredText(node, "creative_id"));
-            event.setProductId(textOrDefault(node, "product_id", event.getCreativeId()));
-            event.setMedia(textOrDefault(node, "media", "unknown"));
-            event.setCommerceScene(textOrDefault(node, "commerce_scene", "shop"));
-            event.setEventType(eventType);
-            event.setSpend(BigDecimal.ZERO);
-            event.setOrderGmv(BigDecimal.ZERO);
-            event.setAttributedGmv(BigDecimal.ZERO);
-            event.setOrganicGmv(BigDecimal.ZERO);
-            output.collect(event);
+            for (JsonNode action : actions) {
+                output.collect(toAdEvent(action, common));
+            }
         } catch (Exception parseError) {
             context.output(dirtyOutputTag, dirtyRecord(value, parseError));
         }
     }
 
-    private PageLogEvent toPageLog(JsonNode node, String eventType) {
+    private AdEvent toAdEvent(JsonNode action, JsonNode common) {
+        String actionName = requiredText(action, "action");
+        AdEvent event = new AdEvent();
+        event.setEventId(requiredText(action, "event_id"));
+        event.setEventTimeMillis(requiredLong(action, "ts"));
+        event.setUserId(requiredText(common, "uid"));
+        event.setSlotId(requiredText(action, "slot_id"));
+        event.setCreativeId(requiredText(action, "creative_id"));
+        event.setProductId(textOrDefault(action, "product_id", event.getCreativeId()));
+        event.setMedia(textOrDefault(action, "media", "unknown"));
+        event.setCommerceScene(textOrDefault(action, "commerce_scene", "shop"));
+        event.setEventType(normalizeAction(actionName));
+        event.setSpend(BigDecimal.ZERO);
+        event.setOrderGmv(BigDecimal.ZERO);
+        event.setAttributedGmv(BigDecimal.ZERO);
+        event.setOrganicGmv(BigDecimal.ZERO);
+        return event;
+    }
+
+    private PageLogEvent toPageLog(JsonNode page, JsonNode common) {
         PageLogEvent event = new PageLogEvent();
-        event.setEventId(requiredText(node, "event_id"));
-        event.setEventTimeMillis(OffsetDateTime.parse(requiredText(node, "ts"))
-                .toInstant().toEpochMilli());
-        event.setUserId(requiredText(node, "user_id"));
-        event.setEventType(eventType);
-        event.setPageId(requiredText(node, "page_id"));
-        event.setLastPageId(textOrDefault(node, "last_page_id", null));
-        event.setDurationMillis(longOrDefault(node, "duration_ms", 0L));
-        event.setDeviceId(textOrDefault(node, "device_id", "unknown"));
-        event.setSource(textOrDefault(node, "source", "direct"));
+        event.setEventId(requiredText(page, "event_id"));
+        event.setEventTimeMillis(requiredLong(page, "ts"));
+        event.setUserId(requiredText(common, "uid"));
+        event.setEventType(requiredText(page, "event_type"));
+        event.setPageId(requiredText(page, "page_id"));
+        event.setLastPageId(textOrDefault(page, "last_page_id", null));
+        event.setDurationMillis(longOrDefault(page, "during_time", 0L));
+        event.setDeviceId(textOrDefault(common, "device_id", "unknown"));
+        event.setSource(textOrDefault(page, "source_type", "direct"));
         return event;
     }
 
@@ -99,15 +104,35 @@ public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent
         }
     }
 
-    private static boolean isAdAction(String eventType) {
-        return "impression".equals(eventType)
-                || "click".equals(eventType)
-                || "conversion".equals(eventType);
+    private static String normalizeAction(String action) {
+        switch (action) {
+            case "send": return "send";
+            case "show": return "impression";
+            case "click": return "click";
+            case "convert": return "conversion";
+            default: throw new IllegalArgumentException("unsupported action: " + action);
+        }
     }
 
     private static long longOrDefault(JsonNode node, String field, long defaultValue) {
         JsonNode value = node.get(field);
         return value == null || value.isNull() ? defaultValue : value.asLong();
+    }
+
+    private static long requiredLong(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull() || !value.canConvertToLong()) {
+            throw new IllegalArgumentException("missing or invalid field: " + field);
+        }
+        return value.asLong();
+    }
+
+    private static JsonNode requiredObject(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isObject()) {
+            throw new IllegalArgumentException("missing or invalid field: " + field);
+        }
+        return value;
     }
 
     private static String requiredText(JsonNode node, String field) {

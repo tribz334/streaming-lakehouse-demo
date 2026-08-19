@@ -89,7 +89,7 @@ public final class RealtimeJobConfig implements Serializable {
                 parameters.getOrDefault("order-mysql-hostname", "mysql"),
                 Integer.parseInt(parameters.getOrDefault("order-mysql-port", "3306")),
                 parameters.getOrDefault("order-mysql-database", "ad_ods"),
-                parameters.getOrDefault("order-mysql-table", "order"),
+                parameters.getOrDefault("order-mysql-table", "order_detail"),
                 parameters.getOrDefault("order-mysql-username", "root"),
                 parameters.getOrDefault("order-mysql-password", "root"),
                 parameters.getOrDefault("order-mysql-server-id", "5501-5508"),

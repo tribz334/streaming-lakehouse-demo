@@ -15,7 +15,7 @@ SELECT
   COALESCE(cr.creative_name, d.creative_type, 'UNKNOWN') AS creative_name,
   d.campaign_id,
   COALESCE(c.campaign_name, 'UNKNOWN') AS campaign_name,
-  COALESCE(CASE WHEN c.objective = 'ROI' THEN 'ROAS' ELSE c.objective END, 'UNKNOWN') AS campaign_objective,
+  COALESCE(c.promotion_goal, 'UNKNOWN') AS campaign_objective,
   c.budget AS campaign_budget,
   COALESCE(c.status, 'UNKNOWN') AS campaign_status,
   c.advertiser_id,
@@ -23,9 +23,9 @@ SELECT
   COALESCE(a.industry, 'UNKNOWN') AS industry,
   COALESCE(a.tier, 'UNKNOWN') AS advertiser_tier,
   cr.unit_id,
-  COALESCE(u.unit_name, 'UNKNOWN') AS unit_name,
-  COALESCE(u.bid_type, 'UNKNOWN') AS bid_type,
-  u.bid_amount,
+  COALESCE(u.`广告组名称`, 'UNKNOWN') AS unit_name,
+  COALESCE(u.`出价方式`, 'UNKNOWN') AS bid_type,
+  u.`转化出价` AS bid_amount,
   d.imp_cnt_1d AS impressions,
   d.click_cnt_1d AS clicks,
   d.conv_cnt_1d AS conversions,
@@ -40,11 +40,11 @@ SELECT
   CURRENT_TIMESTAMP AS updated_at
 FROM paimon.ad_dw.dws_creative_df AS d
 LEFT JOIN paimon.ad_dw.dim_creative_df AS cr
-  ON d.creative_id = cr.creative_id
+  ON d.stat_date = cr.dt AND d.creative_id = cr.creative_id
 LEFT JOIN paimon.ad_dw.dim_campaign_df AS c
-  ON d.campaign_id = c.campaign_id
+  ON d.stat_date = c.dt AND d.campaign_id = c.campaign_id
 LEFT JOIN paimon.ad_dw.dim_advertiser_df AS a
-  ON c.advertiser_id = a.advertiser_id
+  ON d.stat_date = a.dt AND c.advertiser_id = a.advertiser_id
 LEFT JOIN paimon.ad_dw.dim_unit_df AS u
-  ON cr.unit_id = u.unit_id
+  ON d.stat_date = u.dt AND cr.unit_id = u.unit_id
 WHERE d.stat_date < CAST(CURRENT_DATE AS STRING);

@@ -7,7 +7,7 @@ source:
   port: 3306
   username: root
   password: root
-  tables: ad_ods.advertiser,ad_ods.campaign,ad_ods.unit,ad_ods.creative,ad_ods.order,ad_ods.ad_bill
+  tables: ad_ods.advertiser_info,ad_ods.campaign_info,ad_ods.unit_info,ad_ods.creative_info,ad_ods.order_detail,ad_ods.bill_detail
   server-id: 5401-5408
   # The MySQL container runs in UTC; pipeline output remains Asia/Shanghai.
   server-time-zone: UTC
@@ -21,17 +21,17 @@ sink:
   table.properties.merge-engine: deduplicate
 
 route:
-  - source-table: ad_ods.advertiser
-    sink-table: ad_dw.dim_advertiser_df
-  - source-table: ad_ods.campaign
-    sink-table: ad_dw.dim_campaign_df
-  - source-table: ad_ods.unit
-    sink-table: ad_dw.dim_unit_df
-  - source-table: ad_ods.creative
-    sink-table: ad_dw.dim_creative_df
-  - source-table: ad_ods.order
+  - source-table: ad_ods.advertiser_info
+    sink-table: ad_dw.ods_dim_advertiser_current
+  - source-table: ad_ods.campaign_info
+    sink-table: ad_dw.ods_dim_campaign_current
+  - source-table: ad_ods.unit_info
+    sink-table: ad_dw.ods_dim_unit_current
+  - source-table: ad_ods.creative_info
+    sink-table: ad_dw.ods_dim_creative_current
+  - source-table: ad_ods.order_detail
     sink-table: ad_dw.ods_order
-  - source-table: ad_ods.ad_bill
+  - source-table: ad_ods.bill_detail
     sink-table: ad_dw.ods_ad_bill
 
 pipeline:

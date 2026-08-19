@@ -1,57 +1,66 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ustc.example/schema/ods_log.schema.json",
-  "title": "ODS Shared Tracking Log Event",
+  "title": "ODS Raw SDK Tracking Report",
+  "description": "Raw client report retained before DWD page/action flattening. bus_id is intentionally omitted.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["log_type", "event_id", "ts", "user_id", "event_type", "schema_version"],
+  "required": ["app_id", "log_id", "report_id", "common", "actions", "schema_version", "ts"],
   "properties": {
-    "log_type": { "type": "string", "enum": ["ad", "page"] },
-    "event_id": { "type": "string" },
-    "ts": { "type": "string", "format": "date-time" },
-    "user_id": { "type": "string" },
-    "event_type": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$"
+    "app_id": { "type": "integer", "description": "Client/application id." },
+    "log_id": { "type": "integer", "description": "Tracking definition id assigned by the tracking platform." },
+    "report_id": { "type": "string", "minLength": 1 },
+    "common": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["area", "ip", "uid", "device_id", "app_version"],
+      "properties": {
+        "area": { "type": "string" },
+        "ip": { "type": "string" },
+        "uid": { "type": "string" },
+        "advertiser_id": { "type": "string", "description": "Optional for advertiser-side clients; normally absent from consumer-side reports." },
+        "device_id": { "type": "string" },
+        "app_version": { "type": "string" }
+      }
     },
-    "schema_version": { "type": "integer", "minimum": 1 },
-    "product_id": { "type": "string" },
-    "pid": {
-      "type": "string",
-      "description": "Advertising slot id observed by the client; it is not an ad unit id."
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "event_type", "page_id", "during_time", "source_type", "ts"],
+      "properties": {
+        "event_id": { "type": "string" },
+        "event_type": { "type": "string", "enum": ["page_view", "page_leave"] },
+        "page_id": { "type": "string" },
+        "last_page_id": { "type": ["string", "null"] },
+        "during_time": { "type": "integer", "minimum": 0 },
+        "source_type": { "type": "string" },
+        "ts": { "type": "integer", "minimum": 0 }
+      }
     },
-    "creative_id": { "type": "string" },
-    "media": { "type": "string" },
-    "commerce_scene": {
-      "type": "string",
-      "enum": ["live", "short_video", "shop", "external"]
-    },
-    "traffic_type": { "type": "string", "enum": ["paid", "organic"] },
-    "region": { "type": "string" },
-    "page_id": { "type": "string" },
-    "last_page_id": { "type": ["string", "null"] },
-    "duration_ms": { "type": "integer", "minimum": 0 },
-    "device_id": { "type": "string" },
-    "source": { "type": "string" }
-  },
-  "allOf": [
-    {
-      "if": { "properties": { "log_type": { "const": "ad" } } },
-      "then": {
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event_id", "action", "creative_id", "product_id", "slot_id", "media", "commerce_scene", "traffic_type", "ts"],
         "properties": {
-          "event_type": { "enum": ["impression", "click", "conversion"] }
-        },
-        "required": [
-          "product_id", "pid", "creative_id", "media",
-          "commerce_scene", "traffic_type", "region"
-        ]
+          "event_id": { "type": "string" },
+          "action": { "type": "string", "enum": ["send", "show", "click", "convert"] },
+          "creative_id": { "type": "string" },
+          "product_id": { "type": "string" },
+          "slot_id": { "type": "string", "description": "Client-observed advertising slot id." },
+          "media": { "type": "string" },
+          "commerce_scene": { "type": "string", "enum": ["live", "short_video", "shop", "external"] },
+          "traffic_type": { "type": "string", "enum": ["paid", "organic"] },
+          "ts": { "type": "integer", "minimum": 0 }
+        }
       }
     },
-    {
-      "if": { "properties": { "log_type": { "const": "page" } } },
-      "then": {
-        "required": ["page_id", "duration_ms", "device_id", "source"]
-      }
-    }
+    "schema_version": { "type": "integer", "const": 10 },
+    "ts": { "type": "integer", "minimum": 0, "description": "SDK report time in epoch milliseconds." }
+  },
+  "anyOf": [
+    { "required": ["page"] },
+    { "properties": { "actions": { "minItems": 1 } } }
   ]
 }

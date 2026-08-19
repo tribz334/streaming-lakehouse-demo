@@ -17,7 +17,7 @@
 - StarRocks 是查询加速层，Superset 从 StarRocks 读取并画图。
 
 ```text
-实时热路径：Kafka ods_log（创意/商品/广告位与事件上下文）-> 广播关联 Creative/Campaign DIM 补齐层级 ID -> dwd_ad_action_log；广告点击与 MySQL `order` 商品订单进入 DwdOrderDetail -> dwd_order_detail；MySQL `ad_bill` 进入 DwdAdBill；三类事实随后汇合 -> DWS 10 秒聚合 -> StarRocks -> Superset
+实时热路径：Kafka ods_log（创意/商品/广告位与事件上下文）-> 广播关联 Creative/Campaign DIM 补齐层级 ID -> dwd_ad_action_log；广告点击与 MySQL `order_detail` 商品订单进入 DwdOrderDetail -> dwd_order_detail；MySQL `bill_detail` 进入 DwdAdBill；三类事实随后汇合 -> DWS 10 秒聚合 -> StarRocks -> Superset
 离线湖仓：MySQL -> Flink CDC -> Paimon DIM/ODS；Paimon 快照 -> DWS/DM/ADS -> StarRocks
 ```
 
@@ -40,8 +40,8 @@
 ```text
 produce_events.py
   -> 广告行为 -> Kafka: ods_log ------------------┐
-  -> 商品订单 -> MySQL: order -> CDC --------------├-> DwsAdMetric
-  -> 广告计费 -> MySQL: ad_bill -> CDC ------------┘  DwdAdBill、10 秒聚合
+  -> 商品订单 -> MySQL: order_detail -> CDC --------├-> DwsAdMetric
+  -> 广告计费 -> MySQL: bill_detail -> CDC ---------┘  DwdAdBill、10 秒聚合
   -> StarRocks realtime_ad_attribution_metrics_10s
 ```
 
@@ -94,10 +94,10 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 
 | 表 | 一行粒度 | 上游 | 下游 | 当前状态 |
 |---|---|---|---|---|
-| `dim_advertiser_df` | 一个广告主 | MySQL `advertiser` | DWD 补广告主名称、行业、等级；ADS 创意宽表 | 正常产出，约 39 行 |
-| `dim_campaign_df` | 一个广告计划 | MySQL `campaign` | DWD 补计划名称；ADS 创意宽表 | 正常产出，约 59 行 |
-| `dim_unit_df` | 一个广告单元 | MySQL `unit` | ADS 创意宽表补出价方式和金额 | 正常产出，约 76 行 |
-| `dim_creative_df` | 一个创意 | MySQL `creative` | DWD 补创意名称；ADS 创意宽表 | 正常产出，约 83 行 |
+| `dim_advertiser_df` | 一个广告主 | MySQL `advertiser_info` | DWD 补广告主名称、行业、等级；ADS 创意宽表 | 正常产出，约 39 行 |
+| `dim_campaign_df` | 一个广告计划 | MySQL `campaign_info` | DWD 补计划名称；ADS 创意宽表 | 正常产出，约 59 行 |
+| `dim_unit_df` | 一个广告单元 | MySQL `unit_info` | ADS 创意宽表补出价方式和金额 | 正常产出，约 76 行 |
+| `dim_creative_df` | 一个创意 | MySQL `creative_info` | DWD 补创意名称；ADS 创意宽表 | 正常产出，约 83 行 |
 | `dim_customer_df` | 一个客户 | 尚无源表 | 论文模型预留 | 空表 |
 | `dim_shop_df` | 一个店铺 | 尚无源表 | 论文电商扩展预留 | 空表 |
 | `dim_product_df` | 一个商品 | 尚无源表 | 论文电商扩展预留 | 空表 |
@@ -117,11 +117,11 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 | 下游 | 离线 DWS、DM 和 ADS |
 | 更新方式 | 不属于当前实时热路径 |
 
-实时 ODS 广告行为只携带 `creative_id`、`product_id`、广告位 `pid` 和事件上下文；DWD 通过广播 DIM 补齐 `unit_id / campaign_id / advertiser_id`。名称、行业和等级等展示属性不写入实时 DWD。
+实时 ODS 保留 SDK 的 `common/page/actions` 原始嵌套结构；每个 action 只携带 `creative_id`、`product_id`、广告位 `slot_id` 和事件上下文。Flink 将 actions 拆成逐条 DWD 事实，再通过广播 DIM 补齐 `unit_id / campaign_id / advertiser_id`。名称、行业和等级等展示属性不写入实时 DWD。
 
 ### `dwd_order_lifecycle_df`：订单状态表
 
-一行代表一个商品订单当前生命周期，来自 MySQL `order`，只保存用户、商品、金额和创建/支付/退款/完成时间，不保存广告层级。CDC Pipeline 将其同步到 Paimon `ods_order`；实时作业消费同一张表的 binlog，并通过 `user_id + product_id` 与 Kafka 点击完成广告归因。
+一行代表一个商品订单当前生命周期，来自 MySQL `order_detail`，只保存用户、商品、金额和创建/支付/退款/完成时间，不保存广告层级。CDC Pipeline 将其同步到 Paimon `ods_order`；实时作业消费同一张表的 binlog，并通过 `user_id + product_id` 与 Kafka 点击完成广告归因。
 
 ## 7. DWS：主题汇总层
 
@@ -195,7 +195,7 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 Paimon 是离线湖仓存储，StarRocks 是实时与离线结果的统一查询服务。实时核心指标由 Java Flink 作业合并 Kafka 广告流和 MySQL CDC 订单流后计算，并通过 JDBC 写入 StarRocks；离线 ADS 由同步脚本生成快照。Superset 查询 StarRocks 视图。
 
 ```text
-Kafka ods_log + MySQL order/ad_bill CDC -> DwsAdMetric -> StarRocks 实时 Primary Key 表
+Kafka ods_log + MySQL order_detail/bill_detail CDC -> DwsAdMetric -> StarRocks 实时 Primary Key 表
 Paimon ADS -> scripts/windows/sync-starrocks-olap.ps1 -> StarRocks 快照
   -> StarRocks ad_ads 视图
   -> superset/bootstrap_datasets.py 中定义指标口径

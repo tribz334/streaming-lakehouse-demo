@@ -343,10 +343,12 @@ $verifyRealtimeJobs = @'
 set -euo pipefail
 sleep 10
 overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
-running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and (.name | contains("starrocks_realtime_attribution_metric_sink")))] | length')
-test "$running" -eq 1
+java_running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and .name == "DwsAdMetric")] | length')
+cdc_running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and .name == "mysql-cdc-to-paimon")] | length')
+test "$java_running" -eq 1
+test "$cdc_running" -eq 1
 mkdir -p /workspace/dolphinscheduler/runs
-printf 'realtime workflow completed at %s; java_metric_jobs=%s\n' "$(date -Iseconds)" "$running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
+printf 'realtime workflow completed at %s; java_metric_jobs=%s; cdc_jobs=%s\n' "$(date -Iseconds)" "$java_running" "$cdc_running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
 cat /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
 '@
 
@@ -359,26 +361,35 @@ docker exec "$KAFKA" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost
 
 $startRealtimeJava = @'
 set -euo pipefail
-cd /workspace
+cd /workspace/project
 bash scripts/linux/submit-streaming-jobs.sh
+'@
+
+$startMysqlCdc = @'
+set -euo pipefail
+cd /workspace/project
+bash scripts/linux/submit-cdc-pipeline.sh
 '@
 
 $realtimeTasks = @(
   (New-TaskSpec "stop_existing_stream_jobs" "Stop current streaming jobs for release or schema evolution" $stopRealtimeJobs 100 220),
   (New-TaskSpec "prepare_realtime_resources" "Ensure the Kafka ODS topic exists before starting ingestion" $prepareRealtimeResources 320 220),
-  (New-TaskSpec "start_realtime_java_job" "Build and submit the single Kafka-to-StarRocks Java Flink job" $startRealtimeJava 600 220),
-  (New-TaskSpec "verify_realtime_job" "Verify the Java metric job and write the receipt" $verifyRealtimeJobs 880 220)
+  (New-TaskSpec "start_mysql_cdc" "Submit the MySQL-to-Paimon CDC pipeline" $startMysqlCdc 600 100),
+  (New-TaskSpec "start_realtime_java_job" "Build and submit the Kafka-to-StarRocks Java Flink job" $startRealtimeJava 600 340),
+  (New-TaskSpec "verify_realtime_jobs" "Verify both CDC and Java metric jobs and write the receipt" $verifyRealtimeJobs 920 220)
 )
 $realtimeEdges = @(
   [ordered]@{ from = "stop_existing_stream_jobs"; to = "prepare_realtime_resources" },
+  [ordered]@{ from = "prepare_realtime_resources"; to = "start_mysql_cdc" },
   [ordered]@{ from = "prepare_realtime_resources"; to = "start_realtime_java_job" },
-  [ordered]@{ from = "start_realtime_java_job"; to = "verify_realtime_job" }
+  [ordered]@{ from = "start_mysql_cdc"; to = "verify_realtime_jobs" },
+  [ordered]@{ from = "start_realtime_java_job"; to = "verify_realtime_jobs" }
 )
 
 $verifyDailyRealtimeJob = @'
 set -euo pipefail
 overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
-running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and (.name | contains("starrocks_realtime_attribution_metric_sink")))] | length')
+running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and .name == "DwsAdMetric")] | length')
 test "$running" -eq 1
 echo "realtime metric job is running"
 '@

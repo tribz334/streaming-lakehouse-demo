@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $root
 
-$overview = Invoke-RestMethod -Uri "http://127.0.0.1:8082/jobs/overview" -TimeoutSec 10
+$overview = Invoke-RestMethod -Uri "http://127.0.0.1:18082/jobs/overview" -TimeoutSec 10
 $running = @($overview.jobs | Where-Object {
   $_.name -eq "mysql-cdc-to-paimon" -and $_.state -eq "RUNNING"
 })
@@ -19,7 +19,7 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to submit the Flink CDC pipeline." }
 $deadline = (Get-Date).AddMinutes(2)
 do {
   Start-Sleep -Seconds 3
-  $overview = Invoke-RestMethod -Uri "http://127.0.0.1:8082/jobs/overview" -TimeoutSec 10
+  $overview = Invoke-RestMethod -Uri "http://127.0.0.1:18082/jobs/overview" -TimeoutSec 10
   $job = @($overview.jobs | Where-Object {
     $_.name -eq "mysql-cdc-to-paimon" -and $_.state -in @("CREATED", "RUNNING", "RESTARTING", "FAILED")
   } | Sort-Object 'start-time' -Descending) | Select-Object -First 1

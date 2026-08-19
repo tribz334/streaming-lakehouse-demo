@@ -28,7 +28,10 @@ FRAUD_BURST_EVERY = int(os.getenv("FRAUD_BURST_EVERY", "180"))
 FRAUD_BURST_SIZE = int(os.getenv("FRAUD_BURST_SIZE", "36"))
 FRAUD_USER_POOL = int(os.getenv("FRAUD_USER_POOL", "3"))
 TZ = timezone(timedelta(hours=8))
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
+APP_ID = int(os.getenv("GENERATOR_APP_ID", "80"))
+AD_LOG_ID = int(os.getenv("GENERATOR_AD_LOG_ID", "1234"))
+PAGE_LOG_ID = int(os.getenv("GENERATOR_PAGE_LOG_ID", "1235"))
 MEDIA = ["douyin", "kuaishou", "bilibili", "xiaohongshu", "toutiao", "weibo"]
 MEDIA_PROFILES = {
     "douyin": (28, 1.10, 1.06, 1.12),
@@ -83,12 +86,39 @@ ATTRIBUTION_BUCKETS = [
     "natural", "direct_30m",
 ]
 ATTRIBUTION_BUCKET_WEIGHTS = [25, 75]
-AD_LOG_FIELDS = (
-    "log_type", "event_id", "ts", "product_id", "pid",
-    "creative_id", "media", "commerce_scene", "traffic_type", "region",
-    "user_id", "event_type", "schema_version",
-)
 PAGE_IDS = ["home", "feed", "live_room", "product_detail", "cart", "checkout", "profile"]
+
+
+def anonymous_user_id(raw_id):
+    """Return a stable 20-character anonymous user identifier."""
+    return hashlib.sha256(f"user:{raw_id}".encode("utf-8")).hexdigest()[:20]
+
+
+def anonymous_product_id(creative_id):
+    """Return the stable hash used by product_info.product_id."""
+    raw_id = f"product_{creative_id}"
+    return hashlib.sha256(f"product:{raw_id}".encode("utf-8")).hexdigest()[:20]
+
+
+def epoch_millis(timestamp):
+    return int(datetime.fromisoformat(timestamp).timestamp() * 1000)
+
+
+def simulated_area(region):
+    """Return a stable six-digit area code for the simulated region."""
+    return f"{100000 + int(hashlib.sha256(region.encode('utf-8')).hexdigest()[:8], 16) % 900000:06d}"
+
+
+def common_fields(event):
+    user_id = event["user_id"]
+    ip_bytes = hashlib.sha256(user_id.encode("utf-8")).digest()
+    return {
+        "area": simulated_area(event.get("region", "unknown")),
+        "ip": f"10.{ip_bytes[0]}.{ip_bytes[1]}.{ip_bytes[2]}",
+        "uid": user_id,
+        "device_id": event.get("device_id", f"device_{user_id[:12]}"),
+        "app_version": "1.0.0",
+    }
 
 
 def mysql_conn():
@@ -107,12 +137,13 @@ def load_creatives():
         cursor.execute(
             """
             SELECT a.advertiser_id, a.industry, a.tier,
-                   c.campaign_id, c.objective, c.budget,
-                   u.unit_id, u.bid_amount, cr.creative_id
-              FROM advertiser a
-              JOIN campaign c ON a.advertiser_id = c.advertiser_id
-              JOIN `unit` u ON c.campaign_id = u.campaign_id
-              JOIN creative cr ON u.unit_id = cr.unit_id
+                   c.campaign_id, c.promotion_goal, c.budget,
+                   u.unit_id, u.`关联商品ID` AS product_id,
+                   u.`转化出价` AS bid_amount, cr.creative_id
+              FROM advertiser_info a
+              JOIN campaign_info c ON a.advertiser_id = c.advertiser_id
+              JOIN unit_info u ON c.campaign_id = u.campaign_id
+              JOIN creative_info cr ON u.unit_id = cr.unit_id
             """
         )
         return cursor.fetchall()
@@ -123,12 +154,24 @@ def maybe_write_order(event):
         return
     with mysql_conn() as conn:
         cursor = conn.cursor()
+        event_time = event["ts"].replace("T", " ").split("+")[0]
         cursor.execute(
             """
-            INSERT INTO `order`
-            (order_id, user_id, product_id, gmv, order_status, create_time, payment_time)
+            INSERT INTO user_info
+              (user_id, user_type, register_channel, region, membership_level,
+               status, registered_at, last_active_at)
+            VALUES (%s, 'consumer', 'event_generator', 'unknown', 'normal',
+                    'active', %s, %s)
+            ON DUPLICATE KEY UPDATE last_active_at=GREATEST(last_active_at, VALUES(last_active_at))
+            """,
+            (event["user_id"], event_time, event_time),
+        )
+        cursor.execute(
+            """
+            INSERT INTO order_detail
+            (order_id, user_id, product_id, order_amount, order_status, create_time, payment_time)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE order_status=VALUES(order_status), gmv=VALUES(gmv)
+            ON DUPLICATE KEY UPDATE order_status=VALUES(order_status), order_amount=VALUES(order_amount)
             """,
             (
                 event["order_id"],
@@ -136,8 +179,8 @@ def maybe_write_order(event):
                 event["product_id"],
                 event["gmv"],
                 "paid",
-                event["ts"].replace("T", " ").split("+")[0],
-                event["ts"].replace("T", " ").split("+")[0],
+                event_time,
+                event_time,
             ),
         )
         conn.commit()
@@ -149,19 +192,31 @@ def maybe_write_bill(event):
         return
     with mysql_conn() as conn:
         cursor = conn.cursor()
+        event_time = event["ts"].replace("T", " ").split("+")[0]
         cursor.execute(
             """
-            INSERT IGNORE INTO ad_bill
+            INSERT INTO user_info
+              (user_id, user_type, register_channel, region, membership_level,
+               status, registered_at, last_active_at)
+            VALUES (%s, 'consumer', 'event_generator', 'unknown', 'normal',
+                    'active', %s, %s)
+            ON DUPLICATE KEY UPDATE last_active_at=GREATEST(last_active_at, VALUES(last_active_at))
+            """,
+            (event["user_id"], event_time, event_time),
+        )
+        cursor.execute(
+            """
+            INSERT IGNORE INTO bill_detail
             (bill_id, advertiser_id, campaign_id, unit_id, creative_id,
              user_id, media, commerce_scene, cost, bill_time)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                f"bill_{event['event_id']}",
+                event["event_id"],
                 event["advertiser_id"], event["campaign_id"], event["unit_id"],
                 event["creative_id"], event["user_id"], event["media"],
                 event["commerce_scene"], event["spend"],
-                event["ts"].replace("T", " ").split("+")[0],
+                event_time,
             ),
         )
         conn.commit()
@@ -214,9 +269,9 @@ def make_event(keys, event_time=None, rng=random):
         key.get("industry"), (1.0, 1.0, 150.0)
     )
     advertiser_factor = stable_factor(key["advertiser_id"])
-    objective = key.get("objective") or "CTR"
-    objective_click = 1.18 if objective == "CTR" else 1.0
-    objective_conversion = 1.20 if objective in ("ROI", "GMV") else 0.90
+    promotion_goal = key.get("promotion_goal") or "电商下单推广"
+    objective_click = 1.18 if promotion_goal in ("品牌活动推广", "快手号推广") else 1.0
+    objective_conversion = 1.20 if promotion_goal in ("电商下单推广", "销售线索收集") else 0.90
     click_rate = min(
         0.18,
         0.075 * media_click * scene_click * industry_click * objective_click * advertiser_factor,
@@ -248,7 +303,7 @@ def make_event(keys, event_time=None, rng=random):
                 0.48,
             ),
         ), 2)
-        order_id = f"ord_{uuid.uuid4().hex[:12]}"
+        order_id = uuid.uuid4().hex[:12]
     ts = moment.isoformat(timespec="milliseconds")
     return {
         "log_type": "ad",
@@ -256,15 +311,15 @@ def make_event(keys, event_time=None, rng=random):
         "ts": ts,
         "advertiser_id": key["advertiser_id"],
         "campaign_id": key["campaign_id"],
-        "product_id": f"product_{key['creative_id']}",
-        "pid": f"slot_{media}_{rng.randint(1, 12):02d}",
+        "product_id": key["product_id"],
+        "slot_id": f"slot_{media}_{rng.randint(1, 12):02d}",
         "unit_id": key["unit_id"],
         "creative_id": key["creative_id"],
         "media": media,
         "commerce_scene": commerce_scene,
         "traffic_type": "paid",
         "region": rng.choices(REGIONS, weights=[8, 2, 5, 3, 2, 5, 2, 2, 9, 8, 8, 5, 4, 3, 7, 7, 5, 5, 10, 4, 2, 4, 7, 3, 3, 1, 4, 2, 1, 1, 2], k=1)[0],
-        "user_id": f"user_{rng.randint(1, 12000):05d}",
+        "user_id": anonymous_user_id(f"{rng.randint(1, 12000):05d}"),
         "event_type": event_type,
         "bid_price": round(max(0.2, rng.lognormvariate(math.log(bid_amount), 0.22)), 4),
         "spend": spend,
@@ -283,7 +338,7 @@ def make_page_event(sequence, rng=random):
         "log_type": "page",
         "event_id": uuid.uuid4().hex,
         "ts": datetime.now(TZ).isoformat(timespec="milliseconds"),
-        "user_id": f"user_{rng.randint(1, 12000):05d}",
+        "user_id": anonymous_user_id(f"{rng.randint(1, 12000):05d}"),
         "event_type": rng.choices(["page_view", "page_leave"], weights=[4, 1], k=1)[0],
         "page_id": page_id,
         "last_page_id": PAGE_IDS[page_index - 1] if page_index > 0 else None,
@@ -306,7 +361,7 @@ def attach_attribution_journey(order_event, rng, bucket=None, stable_suffix=None
     """
     bucket = bucket or choose_attribution_bucket(rng)
     journey_key = stable_suffix or order_event["event_id"]
-    order_event["user_id"] = f"order_user_{journey_key[:20]}"
+    order_event["user_id"] = journey_key[:20]
     click = make_attribution_click(order_event, rng, bucket=bucket)
     if click:
         click["user_id"] = order_event["user_id"]
@@ -361,9 +416,32 @@ def make_attribution_impression(click_event, rng):
 
 
 def send_event(producer, event):
-    """Send only advertising behavior fields; order fields stay in MySQL."""
-    ad_log = {field: event[field] for field in AD_LOG_FIELDS}
-    producer.send(TOPIC, key=event["user_id"], value=ad_log)
+    """Wrap one simulated action in the raw SDK report written to ODS."""
+    action_names = {
+        "impression": "show",
+        "click": "click",
+        "conversion": "convert",
+    }
+    report = {
+        "app_id": APP_ID,
+        "log_id": AD_LOG_ID,
+        "report_id": uuid.uuid4().hex,
+        "common": common_fields(event),
+        "actions": [{
+            "event_id": event["event_id"],
+            "action": action_names[event["event_type"]],
+            "creative_id": event["creative_id"],
+            "product_id": event["product_id"],
+            "slot_id": event["slot_id"],
+            "media": event["media"],
+            "commerce_scene": event["commerce_scene"],
+            "traffic_type": event["traffic_type"],
+            "ts": epoch_millis(event["ts"]),
+        }],
+        "schema_version": SCHEMA_VERSION,
+        "ts": epoch_millis(event["ts"]),
+    }
+    producer.send(TOPIC, key=event["user_id"], value=report)
     try:
         maybe_write_bill(event)
     except Exception as exc:
@@ -371,7 +449,25 @@ def send_event(producer, event):
 
 
 def send_page_event(producer, event):
-    producer.send(TOPIC, key=event["user_id"], value=event)
+    report = {
+        "app_id": APP_ID,
+        "log_id": PAGE_LOG_ID,
+        "report_id": uuid.uuid4().hex,
+        "common": common_fields(event),
+        "page": {
+            "event_id": event["event_id"],
+            "event_type": event["event_type"],
+            "page_id": event["page_id"],
+            "last_page_id": event["last_page_id"],
+            "during_time": event["duration_ms"],
+            "source_type": event["source"],
+            "ts": epoch_millis(event["ts"]),
+        },
+        "actions": [],
+        "schema_version": SCHEMA_VERSION,
+        "ts": epoch_millis(event["ts"]),
+    }
+    producer.send(TOPIC, key=event["user_id"], value=report)
 
 
 def send_attribution_journey(producer, order_event, click_event, rng):
@@ -384,7 +480,7 @@ def make_live_attribution_order(keys, scene, sequence, rng):
     """Guarantee fresh closed-loop GMV for the rolling two-hour dashboard."""
     order = make_event(keys, event_time=datetime.now(TZ), rng=rng)
     order["event_id"] = uuid.uuid4().hex
-    order["order_id"] = f"ord_live_{NODE_ID}_{sequence}_{order['event_id'][:8]}"
+    order["order_id"] = f"{NODE_ID}_{sequence}_{order['event_id'][:8]}"
     order["event_type"] = "order"
     order["commerce_scene"] = scene
     order["traffic_type"] = "paid"
@@ -402,7 +498,7 @@ def make_demo_attribution_order(keys, day, bucket, index, rng):
     order = make_event(keys, event_time=moment, rng=rng)
     stable_id = hashlib.sha256(f"{NODE_ID}:{day}:{bucket}:{index}".encode("utf-8")).hexdigest()
     order["event_id"] = stable_id[:32]
-    order["order_id"] = f"ord_demo_{stable_id[:16]}"
+    order["order_id"] = stable_id[:16]
     order["event_type"] = "order"
     order["commerce_scene"] = COMMERCE_SCENES[index % 3]
     order["spend"] = 0.0
@@ -530,7 +626,7 @@ def make_fraud_burst(keys):
     media = random.choice(MEDIA)
     region = random.choice(REGIONS)
     ts = datetime.now(TZ).isoformat(timespec="milliseconds")
-    users = [f"user_fraud_{idx:03d}" for idx in range(1, FRAUD_USER_POOL + 1)]
+    users = [f"fraud_{idx:03d}" for idx in range(1, FRAUD_USER_POOL + 1)]
     events = []
 
     for idx in range(max(1, FRAUD_BURST_SIZE // 12)):
@@ -541,8 +637,8 @@ def make_fraud_burst(keys):
                 "ts": ts,
                 "advertiser_id": key["advertiser_id"],
                 "campaign_id": key["campaign_id"],
-                "product_id": f"product_{key['creative_id']}",
-                "pid": f"slot_{media}_{random.randint(1, 12):02d}",
+                "product_id": key["product_id"],
+                "slot_id": f"slot_{media}_{random.randint(1, 12):02d}",
                 "unit_id": key["unit_id"],
                 "creative_id": key["creative_id"],
                 "media": media,
@@ -574,8 +670,8 @@ def make_fraud_burst(keys):
                 "ts": ts,
                 "advertiser_id": key["advertiser_id"],
                 "campaign_id": key["campaign_id"],
-                "product_id": f"product_{key['creative_id']}",
-                "pid": f"slot_{media}_{random.randint(1, 12):02d}",
+                "product_id": key["product_id"],
+                "slot_id": f"slot_{media}_{random.randint(1, 12):02d}",
                 "unit_id": key["unit_id"],
                 "creative_id": key["creative_id"],
                 "media": media,

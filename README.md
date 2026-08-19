@@ -105,9 +105,9 @@ docker compose --profile olap up -d starrocks starrocks-be-node-1
 
 访问入口：
 
-- Flink UI: http://127.0.0.1:8082
-- StarRocks FE: http://127.0.0.1:8030
-- Superset: http://127.0.0.1:8088
+- Flink UI: http://127.0.0.1:18082
+- StarRocks FE: http://127.0.0.1:18030
+- Superset: http://127.0.0.1:18088
 - Apicurio Registry: http://127.0.0.1:8081/apis/registry/v3/system/info
 - Prometheus: http://127.0.0.1:19090
 - Hive Metastore Thrift: 127.0.0.1:19083
@@ -142,8 +142,18 @@ admin / admin
 
 ## 数据链路
 
-1. MySQL 初始化广告主、计划、单元、创意、商品订单表 `order` 和权威广告计费表 `ad_bill`。
-2. 事件生成器把广告行为和页面埋点写入 Kafka 总埋点流 `ods_log`。广告埋点只包含 `creative_id`、`product_id`、广告位 `pid` 和事件上下文，不携带广告主、计划、单元或出价；商品订单写入 MySQL `order`，可计费点击写入 MySQL `ad_bill`。
+1. MySQL 初始化广告主、广告组、广告计划、广告创意、用户、商品、店铺、订单明细和广告消耗明细等业务表；核心表名统一为 `*_info` / `*_detail`。
+   `user_info` 保存用户类型、注册渠道、区域、会员等级和活跃时间（不保存昵称）；`product_info` 与 `shop_info` 由现有广告主和创意数据生成，并与订单商品 ID 保持一致。
+   `user_id` 使用稳定的 20 位匿名哈希，不添加 `user_`、`order_user_` 等实体前缀，也不使用 `00001` 形式的连续编号。
+   `shop_info.shop_id` 与 `product_info.product_id` 同样使用稳定的 20 位匿名哈希，引用这些 ID 的商品、订单和广告组配置保持一致。
+   `bill_detail.bill_id` 直接使用事件 UUID，不添加 `bill_` 前缀。
+   `order_detail.order_id` 不添加 `ord_` 前缀；普通订单使用随机 ID，实时和演示订单保留可追踪的节点或稳定哈希部分。
+   `order_detail` 使用英文列 `order_amount` 表示单笔订单实付金额；进入数仓事实层后再统一映射为 GMV 指标。
+   `product_info` 使用中文字段 `销售价格` 和 `库存数量`，分别表示商品当前售价与当前可售库存件数。
+   广告层级按 `advertiser_info -> campaign_info -> unit_info -> creative_info` 逐级关联；`creative_info` 只保存 `unit_id`，不重复保存可向上推导的 `campaign_id`。
+   `unit_info` 的投放位置只使用“主站/联盟”；落地页统一保存为网址；投放日期类型使用“长期投放/指定投放周期”；地区、年龄、性别和设备等条件集中保存在 `目标人群` JSON 中。`单日预算` 使用 JSON：统一预算保存每日金额，分日预算保存周一至周日金额，不限时为空。出价配置依次为“出价方式、转化目标、转化出价”。
+   `campaign_info` 字段名统一使用英文，配置列为 `promotion_goal`、`ad_type`、`bidding_strategy`、`budget_mode`；字段值仍可使用中文。含义重叠的 `objective` 已删除。
+2. 事件生成器把原始 SDK 上报包写入 Kafka `ods_log`，保留 `common`、可选 `page` 和 `actions` 数组；动作只包含 `creative_id`、`product_id`、广告位 `slot_id` 和事件上下文，不携带广告主、campaign、unit 或出价。Flink 将页面和每个动作拆成 DWD 事实；商品订单写入 MySQL `order_detail`，可计费点击写入 MySQL `bill_detail`。
 3. Flink CDC 3.6 对 MySQL 业务表执行一致性快照后持续读取 binlog，将广告主、计划、单元和创意 Upsert 到 Paimon DIM，将商品订单和广告计费分别写入 `ods_order`、`ods_ad_bill`。
 4. Java Flink 作业解析 Kafka 行为后，通过创意与计划 DIM CDC 广播状态按 `creative_id` 补齐 `unit_id、campaign_id、advertiser_id`，再写入 `dwd_ad_action_log`。点击与纯商品订单按 `product_id + user_id` 执行 30 分钟 LastClick，产出 `dwd_order_detail`；`ad_bill` 经 `DwdAdBill` 转成广告消耗事实。行为、归因订单和计费只在 DWS 输入处汇合并完成 10 秒聚合，名称等展示属性留给 ADS/查询层关联。
 5. Flink batch SQL 计算 ADS：
@@ -160,7 +170,7 @@ admin / admin
 
 ## 实时指标服务
 
-实时查询底表是 StarRocks Primary Key 表。广告曝光/点击来自 Kafka，支付订单来自 MySQL `order`，权威广告消耗来自 `ad_bill`；Java Flink 作业在 DWD 补齐层级 ID 后，以窗口时间、广告主、计划、单元和创意构成联合主键并聚合写表。核心大盘查询 `v_realtime_ad_metrics_today`，展示当天累计消耗、GMV 与 ROAS。
+实时查询底表是 StarRocks Primary Key 表。广告曝光/点击来自 Kafka，支付订单来自 MySQL `order_detail`，权威广告消耗来自 `bill_detail`；Java Flink 作业在 DWD 补齐层级 ID 后，以窗口时间、广告主、计划、单元和创意构成联合主键并聚合写表。核心大盘查询 `v_realtime_ad_metrics_today`，展示当天累计消耗、GMV 与 ROAS。
 
 ## 常用命令
 

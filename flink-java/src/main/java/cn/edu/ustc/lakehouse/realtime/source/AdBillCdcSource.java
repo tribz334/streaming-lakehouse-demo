@@ -73,7 +73,7 @@ public final class AdBillCdcSource {
                   'username' = '%s',
                   'password' = '%s',
                   'database-name' = '%s',
-                  'table-name' = 'ad_bill',
+                  'table-name' = 'bill_detail',
                   'server-id' = '5601-5608',
                   'server-time-zone' = 'UTC',
                   'scan.startup.mode' = 'latest-offset'

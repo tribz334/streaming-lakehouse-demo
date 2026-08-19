@@ -68,7 +68,7 @@ class OrderDetailAttributionTest {
         click.setAdvertiserId("advertiser-1");
         click.setCampaignId("campaign-1");
         click.setUnitId("unit-1");
-        click.setPid("slot-1");
+        click.setSlotId("slot-1");
         click.setProductId("product-1");
         click.setCreativeId(creativeId);
         click.setMedia("app");

@@ -35,8 +35,8 @@ Write-Host "Hive Metastore thrift service is healthy on localhost:19083."
 Write-Host ""
 Write-Host "Flink cluster overview:"
 try {
-  $overview = Invoke-RestMethod -Uri "http://127.0.0.1:8082/overview" -TimeoutSec 10
-  $taskManagers = Invoke-RestMethod -Uri "http://127.0.0.1:8082/taskmanagers" -TimeoutSec 10
+  $overview = Invoke-RestMethod -Uri "http://127.0.0.1:18082/overview" -TimeoutSec 10
+  $taskManagers = Invoke-RestMethod -Uri "http://127.0.0.1:18082/taskmanagers" -TimeoutSec 10
   Write-Host ("TaskManagers={0}, slotsTotal={1}, slotsAvailable={2}, jobsRunning={3}" -f `
     $overview.taskmanagers, `
     $overview.'slots-total', `
@@ -53,7 +53,7 @@ try {
   if ($overview.'flink-version' -ne "2.2.0") {
     throw "Expected Flink 2.2.0, got $($overview.'flink-version')."
   }
-  $jobs = Invoke-RestMethod -Uri "http://127.0.0.1:8082/jobs/overview" -TimeoutSec 10
+  $jobs = Invoke-RestMethod -Uri "http://127.0.0.1:18082/jobs/overview" -TimeoutSec 10
   $cdc = @($jobs.jobs | Where-Object {
     $_.name -eq "mysql-cdc-to-paimon" -and $_.state -eq "RUNNING"
   })

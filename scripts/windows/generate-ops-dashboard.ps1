@@ -48,7 +48,7 @@ UNION ALL SELECT 'fraud', COUNT(*) FROM v_fraud_signal_summary;
   }
 }
 
-$flinkJobs = Try-GetJson "http://127.0.0.1:8082/jobs"
+$flinkJobs = Try-GetJson "http://127.0.0.1:18082/jobs"
 $prometheusReady = $false
 try {
   Invoke-RestMethod -Uri "http://127.0.0.1:19090/-/ready" -TimeoutSec 5 | Out-Null

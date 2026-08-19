@@ -14,15 +14,15 @@ if ($running -match "starrocks_realtime_attribution_metric_sink") {
 }
 
 docker compose exec -T flink-jobmanager flink run -d `
-  -c cn.edu.ustc.lakehouse.realtime.DwsAdMetric `
+  -c cn.edu.ustc.lakehouse.realtime.job.DwsAdMetric `
   /opt/flink/usrlib/java/ad-realtime-metric-job.jar `
   --startup-mode latest `
   --order-mysql-hostname mysql `
   --order-mysql-database ad_ods `
-  --order-mysql-table order `
+  --order-mysql-table order_detail `
   --order-mysql-server-id 5501-5508 `
   --order-mysql-startup-mode latest-offset `
   --parallelism 1
 if ($LASTEXITCODE -ne 0) { throw "Java realtime job submission failed" }
 
-Write-Host "Kafka ad_log + MySQL CDC order Last Click job submitted. Check http://127.0.0.1:8082."
+Write-Host "Kafka ad_log + MySQL CDC order Last Click job submitted. Check http://127.0.0.1:18082."

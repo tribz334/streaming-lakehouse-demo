@@ -54,7 +54,7 @@ if ($WithOlap) {
 
 Write-Host ""
 Write-Host "Multi-node core demo is ready."
-Write-Host "  Flink UI:        http://127.0.0.1:8082"
+Write-Host "  Flink UI:        http://127.0.0.1:18082"
 Write-Host "  Kafka external:  localhost:29092"
 Write-Host "  Hive Metastore:  thrift://127.0.0.1:19083"
 if ($WithOps) {
@@ -63,5 +63,5 @@ if ($WithOps) {
   Write-Host "  Alloy:           http://127.0.0.1:12346"
 }
 if ($WithOlap) {
-  Write-Host "  StarRocks FE:    http://127.0.0.1:8030"
+  Write-Host "  StarRocks FE:    http://127.0.0.1:18030"
 }

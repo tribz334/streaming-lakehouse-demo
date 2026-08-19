@@ -14,7 +14,7 @@ public class AdEvent implements Serializable {
     private String unitId;
     private String creativeId;
     private String productId;
-    private String pid;
+    private String slotId;
     private String media;
     private String commerceScene;
     private String eventType;
@@ -56,8 +56,8 @@ public class AdEvent implements Serializable {
     public void setCreativeId(String creativeId) { this.creativeId = creativeId; }
     public String getProductId() { return productId; }
     public void setProductId(String productId) { this.productId = productId; }
-    public String getPid() { return pid; }
-    public void setPid(String pid) { this.pid = pid; }
+    public String getSlotId() { return slotId; }
+    public void setSlotId(String slotId) { this.slotId = slotId; }
     public String getMedia() { return media; }
     public void setMedia(String media) { this.media = media; }
     public String getCommerceScene() { return commerceScene; }

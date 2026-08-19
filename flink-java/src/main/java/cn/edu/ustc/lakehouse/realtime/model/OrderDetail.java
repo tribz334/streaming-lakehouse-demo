@@ -24,7 +24,7 @@ public class OrderDetail implements Serializable {
     private long attributedClickTimeMillis = Long.MIN_VALUE;
     private String campaignId;
     private String unitId;
-    private String pid;
+    private String slotId;
     private String creativeId;
     private String media;
     private String commerceScene;
@@ -44,7 +44,7 @@ public class OrderDetail implements Serializable {
         advertiserId = click.getAdvertiserId();
         campaignId = click.getCampaignId();
         unitId = click.getUnitId();
-        pid = click.getPid();
+        slotId = click.getSlotId();
         creativeId = click.getCreativeId();
         media = click.getMedia();
         commerceScene = click.getCommerceScene();
@@ -57,7 +57,7 @@ public class OrderDetail implements Serializable {
             advertiserId = "organic";
             campaignId = "organic";
             unitId = "organic";
-            pid = "organic";
+            slotId = "organic";
             creativeId = "organic";
             media = "organic";
             commerceScene = "shop";
@@ -73,7 +73,7 @@ public class OrderDetail implements Serializable {
         event.setAdvertiserId("organic".equals(attributionStatus) ? "organic" : advertiserId);
         event.setCampaignId(campaignId);
         event.setUnitId(unitId);
-        event.setPid(pid);
+        event.setSlotId(slotId);
         event.setCreativeId(creativeId);
         event.setProductId(productId);
         event.setMedia(media);
@@ -120,8 +120,8 @@ public class OrderDetail implements Serializable {
     public void setCampaignId(String campaignId) { this.campaignId = campaignId; }
     public String getUnitId() { return unitId; }
     public void setUnitId(String unitId) { this.unitId = unitId; }
-    public String getPid() { return pid; }
-    public void setPid(String pid) { this.pid = pid; }
+    public String getSlotId() { return slotId; }
+    public void setSlotId(String slotId) { this.slotId = slotId; }
     public String getCreativeId() { return creativeId; }
     public void setCreativeId(String creativeId) { this.creativeId = creativeId; }
     public String getMedia() { return media; }

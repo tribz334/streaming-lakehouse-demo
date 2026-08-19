@@ -70,16 +70,18 @@ def main():
             SELECT
               cr.creative_id, cr.creative_name,
               c.campaign_id, c.campaign_name,
-              CASE WHEN c.objective = 'ROI' THEN 'ROAS' ELSE c.objective END
-                AS campaign_objective,
+              c.promotion_goal AS campaign_objective,
               c.budget AS campaign_budget, c.status AS campaign_status,
               a.advertiser_id, a.advertiser_name, a.industry,
               a.tier AS advertiser_tier,
-              u.unit_id, u.unit_name, u.bid_type, u.bid_amount
-            FROM creative cr
-            JOIN campaign c ON cr.campaign_id = c.campaign_id
-            JOIN advertiser a ON c.advertiser_id = a.advertiser_id
-            JOIN `unit` u ON cr.unit_id = u.unit_id
+              u.unit_id,
+              u.`广告组名称` AS unit_name,
+              u.`出价方式` AS bid_type,
+              u.`转化出价` AS bid_amount
+            FROM creative_info cr
+            JOIN unit_info u ON cr.unit_id = u.unit_id
+            JOIN campaign_info c ON u.campaign_id = c.campaign_id
+            JOIN advertiser_info a ON c.advertiser_id = a.advertiser_id
             """
         )
         dimensions = {

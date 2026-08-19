@@ -113,7 +113,7 @@ services:
         metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
         metrics.reporter.prom.port: 9249
     ports:
-      - "8082:8081"
+      - "18082:8081"
       - "19249:9249"
     volumes:
       - warehouse-v3:/warehouse
@@ -203,7 +203,7 @@ services:
       LOG_CONSOLE: "1"
       CONFIGMAP_MOUNT_PATH: /demo-conf
     ports:
-      - "8030:8030"
+      - "18030:8030"
       - "19030:9030"
       - "9010:9010"
     volumes:
@@ -248,7 +248,7 @@ services:
       SUPERSET_SECRET_KEY: "ustc-streaming-lakehouse-demo-secret"
       SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
     ports:
-      - "8088:8088"
+      - "18088:8088"
     depends_on:
       starrocks:
         condition: service_healthy

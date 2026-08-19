@@ -16,17 +16,20 @@ public final class CreativeDimCdcSource {
     public static DataStream<CreativeDimChange> create(
             StreamTableEnvironment tableEnvironment, RealtimeJobConfig config) {
         tableEnvironment.executeSql(creativeTableDdl(config));
+        tableEnvironment.executeSql(unitTableDdl(config));
         tableEnvironment.executeSql(campaignTableDdl(config));
 
         Table hierarchy = tableEnvironment.sqlQuery("""
                 SELECT
                   cr.creative_id,
-                  cr.campaign_id,
+                  u.campaign_id,
                   cr.unit_id,
                   c.advertiser_id
                 FROM mysql_dim_creative AS cr
+                JOIN mysql_dim_unit AS u
+                  ON cr.unit_id = u.unit_id
                 JOIN mysql_dim_campaign AS c
-                  ON cr.campaign_id = c.campaign_id
+                  ON u.campaign_id = c.campaign_id
                 """);
 
         return tableEnvironment.toChangelogStream(hierarchy)
@@ -50,15 +53,42 @@ public final class CreativeDimCdcSource {
                 "mysql_dim_creative",
                 """
                   creative_id STRING,
-                  campaign_id STRING,
                   unit_id STRING,
                   creative_name STRING,
                   format STRING,
                   updated_at TIMESTAMP(3),
                   PRIMARY KEY (creative_id) NOT ENFORCED
                 """,
-                "creative",
+                "creative_info",
                 "5701-5708",
+                config);
+    }
+
+    private static String unitTableDdl(RealtimeJobConfig config) {
+        return mysqlCdcDdl(
+                "mysql_dim_unit",
+                """
+                  unit_id STRING,
+                  campaign_id STRING,
+                  `广告组名称` STRING,
+                  `投放位置` STRING,
+                  `推广落地页网址` STRING,
+                  `关联商品ID` STRING,
+                  `目标人群` STRING,
+                  `投放日期类型` STRING,
+                  `开始日期` DATE,
+                  `结束日期` DATE,
+                  `单日预算模式` STRING,
+                  `单日预算` STRING,
+                  `出价方式` STRING,
+                  `转化目标` STRING,
+                  `转化出价` DECIMAL(18, 4),
+                  status STRING,
+                  updated_at TIMESTAMP(3),
+                  PRIMARY KEY (unit_id) NOT ENFORCED
+                """,
+                "unit_info",
+                "5721-5728",
                 config);
     }
 
@@ -69,13 +99,16 @@ public final class CreativeDimCdcSource {
                   campaign_id STRING,
                   advertiser_id STRING,
                   campaign_name STRING,
-                  objective STRING,
+                  promotion_goal STRING,
+                  ad_type STRING,
+                  bidding_strategy STRING,
+                  budget_mode STRING,
                   budget DECIMAL(18, 2),
                   status STRING,
                   updated_at TIMESTAMP(3),
                   PRIMARY KEY (campaign_id) NOT ENFORCED
                 """,
-                "campaign",
+                "campaign_info",
                 "5711-5718",
                 config);
     }

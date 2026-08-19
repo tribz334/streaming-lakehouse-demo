@@ -76,7 +76,7 @@ public final class OrderCdcSource {
                   order_id STRING,
                   user_id STRING,
                   product_id STRING,
-                  gmv DECIMAL(18, 2),
+                  order_amount DECIMAL(18, 2),
                   order_status STRING,
                   create_time TIMESTAMP(3),
                   payment_time TIMESTAMP(3),

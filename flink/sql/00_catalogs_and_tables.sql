@@ -13,7 +13,10 @@ USE CATALOG paimon;
 CREATE DATABASE IF NOT EXISTS ad_dw;
 USE ad_dw;
 
-CREATE TABLE IF NOT EXISTS dim_advertiser_df (
+-- CDC first maintains a delete-aware current-state ODS mirror.  DIM is built
+-- from this mirror by 07_offline_dim_snapshot.sql as one physical snapshot per
+-- dt; it is deliberately not an SCD/zipper table.
+CREATE TABLE IF NOT EXISTS ods_dim_advertiser_current (
   advertiser_id STRING,
   advertiser_name STRING,
   industry STRING,
@@ -28,11 +31,14 @@ CREATE TABLE IF NOT EXISTS dim_advertiser_df (
   'changelog-producer' = 'input'
 );
 
-CREATE TABLE IF NOT EXISTS dim_campaign_df (
+CREATE TABLE IF NOT EXISTS ods_dim_campaign_current (
   campaign_id STRING,
   advertiser_id STRING,
   campaign_name STRING,
-  objective STRING,
+  promotion_goal STRING,
+  ad_type STRING,
+  bidding_strategy STRING,
+  budget_mode STRING,
   budget DECIMAL(18,2),
   status STRING,
   updated_at TIMESTAMP(3),
@@ -43,7 +49,7 @@ CREATE TABLE IF NOT EXISTS dim_campaign_df (
   'changelog-producer' = 'input'
 );
 
-CREATE TABLE IF NOT EXISTS dim_creative_df (
+CREATE TABLE IF NOT EXISTS ods_dim_creative_current (
   creative_id STRING,
   campaign_id STRING,
   unit_id STRING,
@@ -57,16 +63,102 @@ CREATE TABLE IF NOT EXISTS dim_creative_df (
   'changelog-producer' = 'input'
 );
 
-CREATE TABLE IF NOT EXISTS dim_unit_df (
+CREATE TABLE IF NOT EXISTS ods_dim_unit_current (
   unit_id STRING,
   campaign_id STRING,
-  unit_name STRING,
-  bid_type STRING,
-  bid_amount DECIMAL(18,4),
+  `广告组名称` STRING,
+  `投放位置` STRING,
+  `推广落地页网址` STRING,
+  `关联商品ID` STRING,
+  `目标人群` STRING,
+  `投放日期类型` STRING,
+  `开始日期` DATE,
+  `结束日期` DATE,
+  `单日预算模式` STRING,
+  `单日预算` STRING,
+  `出价方式` STRING,
+  `转化目标` STRING,
+  `转化出价` DECIMAL(18,4),
   status STRING,
   updated_at TIMESTAMP(3),
   PRIMARY KEY (unit_id) NOT ENFORCED
 ) WITH (
+  'bucket' = '4',
+  'merge-engine' = 'deduplicate',
+  'changelog-producer' = 'input'
+);
+
+CREATE TABLE IF NOT EXISTS dim_advertiser_df (
+  dt STRING,
+  advertiser_id STRING,
+  advertiser_name STRING,
+  industry STRING,
+  tier STRING,
+  home_region STRING,
+  signup_date DATE,
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (dt, advertiser_id) NOT ENFORCED
+) PARTITIONED BY (dt) WITH (
+  'bucket' = '4',
+  'merge-engine' = 'deduplicate',
+  'changelog-producer' = 'input'
+);
+
+CREATE TABLE IF NOT EXISTS dim_campaign_df (
+  dt STRING,
+  campaign_id STRING,
+  advertiser_id STRING,
+  campaign_name STRING,
+  promotion_goal STRING,
+  ad_type STRING,
+  bidding_strategy STRING,
+  budget_mode STRING,
+  budget DECIMAL(18,2),
+  status STRING,
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (dt, campaign_id) NOT ENFORCED
+) PARTITIONED BY (dt) WITH (
+  'bucket' = '4',
+  'merge-engine' = 'deduplicate',
+  'changelog-producer' = 'input'
+);
+
+CREATE TABLE IF NOT EXISTS dim_creative_df (
+  dt STRING,
+  creative_id STRING,
+  campaign_id STRING,
+  unit_id STRING,
+  creative_name STRING,
+  format STRING,
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (dt, creative_id) NOT ENFORCED
+) PARTITIONED BY (dt) WITH (
+  'bucket' = '4',
+  'merge-engine' = 'deduplicate',
+  'changelog-producer' = 'input'
+);
+
+CREATE TABLE IF NOT EXISTS dim_unit_df (
+  dt STRING,
+  unit_id STRING,
+  campaign_id STRING,
+  `广告组名称` STRING,
+  `投放位置` STRING,
+  `推广落地页网址` STRING,
+  `关联商品ID` STRING,
+  `目标人群` STRING,
+  `投放日期类型` STRING,
+  `开始日期` DATE,
+  `结束日期` DATE,
+  `单日预算模式` STRING,
+  `单日预算` STRING,
+  `出价方式` STRING,
+  `转化目标` STRING,
+  `转化出价` DECIMAL(18,4),
+  status STRING,
+  updated_at TIMESTAMP(3),
+  PRIMARY KEY (dt, unit_id) NOT ENFORCED
+) PARTITIONED BY (dt) WITH (
   'bucket' = '4',
   'merge-engine' = 'deduplicate',
   'changelog-producer' = 'input'
@@ -78,7 +170,7 @@ CREATE TABLE IF NOT EXISTS ods_ad_events_di (
   event_ts TIMESTAMP(3),
   creative_id STRING,
   product_id STRING,
-  pid STRING,
+  slot_id STRING,
   media STRING,
   commerce_scene STRING,
   traffic_type STRING,
