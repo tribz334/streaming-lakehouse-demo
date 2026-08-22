@@ -27,10 +27,11 @@ Write-Host ""
 
 $compose = @("compose")
 & docker @compose build flink-jobmanager event-generator-node-1
+& docker @compose up -d --no-build mysql
+./scripts/windows/apply-mysql-migrations.ps1
 & docker @compose up -d --no-build --remove-orphans
 
 ./scripts/windows/init-flink-ddl.ps1
-./scripts/windows/submit-cdc-pipeline.ps1
 
 if (-not $SkipStreamingSubmit) {
   ./scripts/windows/submit-streaming-jobs.ps1

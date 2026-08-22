@@ -66,12 +66,6 @@
       <h2>Offline Governance Lineage</h2>
       <table><thead><tr><th>Job</th><th>Upstream</th><th>Downstream</th></tr></thead><tbody>
 <tr><td>flink_10_ads_retention</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_advertiser_retention_di,PROD)</td></tr>
-<tr><td>flink_08_offline_dws</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)</td></tr>
-<tr><td>flink_09_offline_dm</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_attribution_candidate_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)</td></tr>
-<tr><td>flink_11_ads_attribution</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_attribution_touchpoint_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td></tr>
-<tr><td>flink_08_offline_dws</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dwd_ad_events_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)</td></tr>
-<tr><td>flink_09_offline_dm</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dws_user_click_window_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)</td></tr>
-<tr><td>flink_12_ads_fraud</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.dm_antifraud_feature_df,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td></tr>
 <tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_attribution_summary_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_attribution_summary,PROD)</td></tr>
 <tr><td>sync_starrocks_olap</td><td>urn:li:dataset:(urn:li:dataPlatform:paimon,ad_dw.ads_fraud_signal_di,PROD)</td><td>urn:li:dataset:(urn:li:dataPlatform:starrocks,ad_ads.v_fraud_signal_summary,PROD)</td></tr>
 </tbody></table>

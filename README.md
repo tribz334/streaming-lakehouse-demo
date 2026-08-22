@@ -9,15 +9,15 @@
 | 论文模块 | 本目录实现 |
 | --- | --- |
 | 业务库 | MySQL 8.4，开启 binlog/ROW/GTID |
-| 维度主数据 | Flink CDC 3.6 将广告主、计划、单元和创意持续同步到 Paimon DIM；实时 DWD 根据 `creative_id` 广播补齐广告层级 ID，名称等展示属性在 ADS/查询层关联 |
+| 维度主数据 | Flink CDC 直接监听 MySQL Binlog 并持续 Upsert DIM；Paimon 每日 Tag 保留至少 30 天历史 |
 | 埋点日志 | `event-generator-node-1` 写入 Kafka `ods_log` |
 | Kafka 消息总线 | Apache Kafka 3.9.1 KRaft 单节点，6 分区、单副本 |
-| Flink CDC | Flink CDC 3.6 YAML Pipeline；MySQL 全量快照后持续消费 binlog，实时维护 Paimon DIM/ODS |
+| Flink CDC | Flink CDC 3.6 SQL Connector；MySQL initial snapshot 后持续消费 Binlog，直接维护 Paimon DIM/DWD |
 | Paimon 湖仓 | Paimon Flink 2.2 connector 1.4.2，warehouse: `/warehouse/paimon`，Catalog 元数据持久化到 Hive Metastore |
 | Flink 流批一体 | Flink 2.2.0 JobManager/TaskManager |
 | 流批一体计算 | 实时与离线共用 Flink、业务主键和指标口径；实时热链路直写 StarRocks，离线明细与历史主题数据保存在 Paimon |
 | 论文数据字典 | `01_model_tables.sql` 定义当前保留的 DWS/DM 核心表 |
-| 订单生命周期 | Paimon `partial-update` 主键表 |
+| 订单生命周期 | Paimon Key Dynamic Bucket 跨分区 Upsert 累积事实表；未闭环订单位于 `9999-12-31` |
 | OLAP 服务 | StarRocks FE/BE；单个 Java Flink 作业将 10 秒窗口结果直接写入 Primary Key 表，离线 ADS 使用内部快照 |
 | BI 应用 | Superset 3.0.0，自动注册 StarRocks 数据库与四个 dataset |
 | Schema Registry | Apicurio Registry 3.2.5，已注册 Kafka `ods_log-value` JSON schema |
@@ -74,7 +74,6 @@ node-1: MySQL + Kafka-node-1 + Flink JM/TM + event-generator-node-1
 ./scripts/windows/download-flink-jars.ps1
 docker compose up -d --build
 ./scripts/windows/init-flink-ddl.ps1
-./scripts/windows/submit-cdc-pipeline.ps1
 ./scripts/windows/submit-streaming-jobs.ps1
 ```
 
@@ -144,18 +143,16 @@ admin / admin
 
 1. MySQL 初始化广告主、广告组、广告计划、广告创意、用户、商品、店铺、订单明细和广告消耗明细等业务表；核心表名统一为 `*_info` / `*_detail`。
    `user_info` 保存用户类型、注册渠道、区域、会员等级和活跃时间（不保存昵称）；`product_info` 与 `shop_info` 由现有广告主和创意数据生成，并与订单商品 ID 保持一致。
-   `user_id` 使用稳定的 20 位匿名哈希，不添加 `user_`、`order_user_` 等实体前缀，也不使用 `00001` 形式的连续编号。
-   `shop_info.shop_id` 与 `product_info.product_id` 同样使用稳定的 20 位匿名哈希，引用这些 ID 的商品、订单和广告组配置保持一致。
-   `bill_detail.bill_id` 直接使用事件 UUID，不添加 `bill_` 前缀。
-   `order_detail.order_id` 不添加 `ord_` 前缀；普通订单使用随机 ID，实时和演示订单保留可追踪的节点或稳定哈希部分。
-   `order_detail` 使用英文列 `order_amount` 表示单笔订单实付金额；进入数仓事实层后再统一映射为 GMV 指标。
+   所有业务 ID 均使用 `BIGINT`，不添加实体前缀，也不进行哈希。广告主、活动、计划、创意、店铺和商品采用可读的分段数字编码。
+   `event_id`、`msg_id`、`order_id` 与 `bill_id` 使用时间、节点和序列组成的 63 位数字 ID；`bill_id` 复用产生该账单的 `event_id`，便于幂等写入。
+   `order_detail` 使用 `product_price`、`product_num`、`total_amount` 表示下单时商品单价、数量和总价，金额统一为 `BIGINT`、单位为千分之一分，并保存支付方式、收货信息、物流单号和七个订单生命周期时间。
    `product_info` 使用中文字段 `销售价格` 和 `库存数量`，分别表示商品当前售价与当前可售库存件数。
    广告层级按 `advertiser_info -> campaign_info -> unit_info -> creative_info` 逐级关联；`creative_info` 只保存 `unit_id`，不重复保存可向上推导的 `campaign_id`。
    `unit_info` 的投放位置只使用“主站/联盟”；落地页统一保存为网址；投放日期类型使用“长期投放/指定投放周期”；地区、年龄、性别和设备等条件集中保存在 `目标人群` JSON 中。`单日预算` 使用 JSON：统一预算保存每日金额，分日预算保存周一至周日金额，不限时为空。出价配置依次为“出价方式、转化目标、转化出价”。
-   `campaign_info` 字段名统一使用英文，配置列为 `promotion_goal`、`ad_type`、`bidding_strategy`、`budget_mode`；字段值仍可使用中文。含义重叠的 `objective` 已删除。
-2. 事件生成器把原始 SDK 上报包写入 Kafka `ods_log`，保留 `common`、可选 `page` 和 `actions` 数组；动作只包含 `creative_id`、`product_id`、广告位 `slot_id` 和事件上下文，不携带广告主、campaign、unit 或出价。Flink 将页面和每个动作拆成 DWD 事实；商品订单写入 MySQL `order_detail`，可计费点击写入 MySQL `bill_detail`。
-3. Flink CDC 3.6 对 MySQL 业务表执行一致性快照后持续读取 binlog，将广告主、计划、单元和创意 Upsert 到 Paimon DIM，将商品订单和广告计费分别写入 `ods_order`、`ods_ad_bill`。
-4. Java Flink 作业解析 Kafka 行为后，通过创意与计划 DIM CDC 广播状态按 `creative_id` 补齐 `unit_id、campaign_id、advertiser_id`，再写入 `dwd_ad_action_log`。点击与纯商品订单按 `product_id + user_id` 执行 30 分钟 LastClick，产出 `dwd_order_detail`；`ad_bill` 经 `DwdAdBill` 转成广告消耗事实。行为、归因订单和计费只在 DWS 输入处汇合并完成 10 秒聚合，名称等展示属性留给 ADS/查询层关联。
+   `campaign_info` 使用 `market_goal / ad_type / trading_mode / budget / daily_budget`；预算与出价、商品价格统一用 BIGINT 保存，单位为千分之一分。
+2. 事件生成器把原始 SDK 上报包写入 Kafka `ods_log`，保留 `common` 和 `actions` 数组；动作只包含 `creative_id`、`product_id`、广告位 `slot_id` 和事件上下文，不携带广告主、campaign、unit、出价或消耗。Flink 将每个动作拆成 DWD 事实；商品订单写入 MySQL `order_detail`。生成器模拟服务端计费：CPM/oCPM 在曝光时、CPC/oCPC 在点击时、CPA/oCPA 在转化时生成不可变账单并写入 MySQL `bill_detail`。
+3. 数据库表不再落 ODS 中间层。Flink CDC 直接监听广告主、campaign、unit、creative、用户、店铺、商品、账单和订单 Binlog：主数据持续 Upsert DIM，账单和订单直接进入 DWD。DIM/DWD 使用 Paimon 日 Tag，Tag 至少保留 30 天（最多保留 35 个自动日 Tag）。
+4. ODS 只保留 `ods_log_inc`，完整存放埋点消息中的 `msg_id/bus_id/app_id/log_id/common/actions/ts/dt`。SQL 拆分 `actions` 写入 `dwd_ad_action_log_inc`；订单和账单由 MySQL CDC 直接加工到 `dwd_order_detail_acc` 和 `dwd_ad_bill_detail_inc`。DWS/DM 产出 creative、unit、campaign、advertiser 四级汇总。
 5. Flink batch SQL 计算 ADS：
    - `ads_advertiser_retention_di`：广告主留存。
    - `ads_order_attribution_detail_di`：订单级 30 天 LastClick 明细，互斥区分 30 分钟直接归因、1/3/7/30 日间接归因和自然订单。

@@ -22,10 +22,7 @@ cn/edu/ustc/lakehouse/realtime/model/AdBill.class
 cn/edu/ustc/lakehouse/realtime/source/AdBillCdcSource.class
 cn/edu/ustc/lakehouse/realtime/dwd/DwdAdBill.class
 cn/edu/ustc/lakehouse/realtime/dwd/AttributionKey.class
-cn/edu/ustc/lakehouse/realtime/sink/KafkaDwdUtil$PageLogSchema.class
-cn/edu/ustc/lakehouse/realtime/job/DwsAdMetric$1.class
 cn/edu/ustc/lakehouse/realtime/model/AdEvent.class
-cn/edu/ustc/lakehouse/realtime/model/PageLogEvent.class
 cn/edu/ustc/lakehouse/realtime/sink/KafkaDwdUtil$OrderDetailSchema.class
 cn/edu/ustc/lakehouse/realtime/source/OrderCdcSource.class
 cn/edu/ustc/lakehouse/realtime/dws/DwsMetricAggregation.class

@@ -7,8 +7,7 @@ $jobs = @(
   "08_offline_dws.sql",
   "09_offline_dm.sql",
   "10_ads_retention.sql",
-  "11_ads_attribution.sql",
-  "12_ads_fraud.sql",
+  "11_ads_order_attribution.sql",
   "13_ads_creative_offline.sql"
 )
 

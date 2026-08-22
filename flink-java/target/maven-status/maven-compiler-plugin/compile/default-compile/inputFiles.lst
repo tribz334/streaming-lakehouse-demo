@@ -13,7 +13,6 @@
 /workspace/src/main/java/cn/edu/ustc/lakehouse/realtime/model/AdEvent.java
 /workspace/src/main/java/cn/edu/ustc/lakehouse/realtime/model/CreativeDimChange.java
 /workspace/src/main/java/cn/edu/ustc/lakehouse/realtime/model/OrderDetail.java
-/workspace/src/main/java/cn/edu/ustc/lakehouse/realtime/model/PageLogEvent.java
 /workspace/src/main/java/cn/edu/ustc/lakehouse/realtime/model/RealtimeMetric.java
 /workspace/src/main/java/cn/edu/ustc/lakehouse/realtime/package-info.java
 /workspace/src/main/java/cn/edu/ustc/lakehouse/realtime/sink/KafkaDwdUtil.java

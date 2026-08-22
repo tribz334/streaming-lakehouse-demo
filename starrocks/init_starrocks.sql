@@ -15,10 +15,10 @@ DROP VIEW IF EXISTS v_dwm_ad_event_wide;
 
 CREATE TABLE IF NOT EXISTS realtime_ad_metrics_10s (
   window_start DATETIME NOT NULL,
-  advertiser_id VARCHAR(64) NOT NULL,
-  campaign_id VARCHAR(64) NOT NULL,
-  unit_id VARCHAR(64) NOT NULL,
-  creative_id VARCHAR(64) NOT NULL,
+  advertiser_id BIGINT NOT NULL,
+  campaign_id BIGINT NOT NULL,
+  unit_id BIGINT NOT NULL,
+  creative_id BIGINT NOT NULL,
   window_end DATETIME NOT NULL,
   spend DECIMAL(18,4),
   gmv DECIMAL(18,2),
@@ -39,10 +39,10 @@ PROPERTIES ("replication_num" = "1");
 -- so existing screenshots and rollback paths remain intact.
 CREATE TABLE IF NOT EXISTS realtime_ad_attribution_metrics_10s (
   window_start DATETIME NOT NULL,
-  advertiser_id VARCHAR(64) NOT NULL,
-  campaign_id VARCHAR(64) NOT NULL,
-  unit_id VARCHAR(64) NOT NULL,
-  creative_id VARCHAR(64) NOT NULL,
+  advertiser_id BIGINT NOT NULL,
+  campaign_id BIGINT NOT NULL,
+  unit_id BIGINT NOT NULL,
+  creative_id BIGINT NOT NULL,
   media VARCHAR(32) NOT NULL,
   commerce_scene VARCHAR(32) NOT NULL,
   window_end DATETIME NOT NULL,

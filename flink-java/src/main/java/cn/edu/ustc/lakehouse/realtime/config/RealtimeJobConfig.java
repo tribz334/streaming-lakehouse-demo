@@ -8,7 +8,6 @@ public final class RealtimeJobConfig implements Serializable {
     private final String kafkaBootstrapServers;
     private final String sourceTopic;
     private final String dwdAdActionTopic;
-    private final String dwdPageLogTopic;
     private final String dwdDirtyLogTopic;
     private final String dwdOrderDetailTopic;
     private final String consumerGroup;
@@ -32,7 +31,6 @@ public final class RealtimeJobConfig implements Serializable {
             String kafkaBootstrapServers,
             String sourceTopic,
             String dwdAdActionTopic,
-            String dwdPageLogTopic,
             String dwdDirtyLogTopic,
             String dwdOrderDetailTopic,
             String consumerGroup,
@@ -54,7 +52,6 @@ public final class RealtimeJobConfig implements Serializable {
         this.kafkaBootstrapServers = kafkaBootstrapServers;
         this.sourceTopic = sourceTopic;
         this.dwdAdActionTopic = dwdAdActionTopic;
-        this.dwdPageLogTopic = dwdPageLogTopic;
         this.dwdDirtyLogTopic = dwdDirtyLogTopic;
         this.dwdOrderDetailTopic = dwdOrderDetailTopic;
         this.consumerGroup = consumerGroup;
@@ -81,7 +78,6 @@ public final class RealtimeJobConfig implements Serializable {
                 parameters.getOrDefault("kafka-bootstrap", "kafka-node-1:9092"),
                 parameters.getOrDefault("source-topic", "ods_log"),
                 parameters.getOrDefault("dwd-ad-action-topic", "dwd_ad_action_log"),
-                parameters.getOrDefault("dwd-page-log-topic", "dwd_page_log"),
                 parameters.getOrDefault("dwd-dirty-log-topic", "dwd_dirty_log"),
                 parameters.getOrDefault("dwd-order-detail-topic", "dwd_order_detail"),
                 parameters.getOrDefault("consumer-group", "flink-java-realtime-metric"),
@@ -117,7 +113,6 @@ public final class RealtimeJobConfig implements Serializable {
     public String getKafkaBootstrapServers() { return kafkaBootstrapServers; }
     public String getSourceTopic() { return sourceTopic; }
     public String getDwdAdActionTopic() { return dwdAdActionTopic; }
-    public String getDwdPageLogTopic() { return dwdPageLogTopic; }
     public String getDwdDirtyLogTopic() { return dwdDirtyLogTopic; }
     public String getDwdOrderDetailTopic() { return dwdOrderDetailTopic; }
     public String getConsumerGroup() { return consumerGroup; }

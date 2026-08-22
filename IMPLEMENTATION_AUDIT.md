@@ -8,11 +8,11 @@
 | --- | --- | --- |
 | Kafka 埋点事件接入 | 事件生成器持续写入 `ods_log` | `generator/produce_events.py`、Kafka 容器 |
 | MySQL 业务数据源 | 广告主、广告组、广告计划、创意、用户、商品、店铺、订单明细 `order_detail` 与广告消耗明细 `bill_detail` | `mysql/init`、MySQL 容器 |
-| Flink CDC 业务库同步 | CDC Pipeline 维护 Paimon DIM、订单与计费表；实时 Java 作业直接消费订单、计费 binlog，并与 Kafka 行为流合流 | `flink-cdc/mysql-to-paimon.yaml`、`OrderCdcSource.java`、`AdBillCdcSource.java` |
+| MySQL 业务数据接入 | Flink CDC 直接监听 Binlog：主数据进入 DIM，订单和计费进入 DWD，无数据库 ODS 中间表 | `05_mysql_cdc_direct_to_dim.sql`、`02_dwd_order_lifecycle.sql`、`04_dwd_ad_facts_to_paimon.sql` |
 | Paimon 湖仓分层 | 保存 ODS/DWD/DIM 及离线 DWS/DM/ADS，支持批量回溯与主题加工 | `00_catalogs_and_tables.sql`、`01_model_tables.sql` |
 | 单机精简拓扑 | 1 Kafka Broker、1 Flink TM、1 采集实例，可选 1 StarRocks FE + 1 BE | `docker-compose.yml` |
 | Flink 流批处理 | 一个 Java 流任务处理实时短窗口，SQL 批任务刷新离线 DWS/DM/ADS | `flink-java`、`scripts/windows/*.ps1`、`scripts/linux/*.sh` |
-| 订单生命周期 | Paimon partial-update 主键表 | `dwd_order_lifecycle_df` |
+| 订单生命周期 | 七个关键时间节点；Paimon动态桶全局主键把未闭环订单从 `9999-12-31` 迁移到真实终止日分区 | `dwd_order_detail_acc`、`02_dwd_order_lifecycle.sql` |
 | 核心广告指标 | Java Flink 作业完成 10 秒窗口聚合；大盘按天累计展示总消耗、内循环 GMV，并按“内循环 GMV / 内循环消耗”计算 ROAS | `flink-java`、`realtime_ad_metrics_10s`、`bootstrap_dashboard.py` |
 | 离线核心指标大盘 | 每日封存 ADS、与实时一致的内循环口径、可配置统计时间范围和日趋势 | `realtime_ad_metrics_daily`、`v_offline_core_metrics`、`bootstrap_offline_dashboard.py` |
 | 广告主留存 | 次日、7 日、15 日、30 日留存口径 | `10_ads_retention.sql` |
@@ -20,11 +20,9 @@
 | StarRocks OLAP | 实时指标由 Flink JDBC Sink 直接 UPSERT；离线 ADS 使用快照 | `StarRocksMetricSink.java`、`init_starrocks.sql`、`sync-starrocks-olap.ps1` |
 | Superset 接入 | 注册实时、离线、留存、归因和反作弊数据集并自动生成专题看板 | `superset/bootstrap_datasets.py`、`superset/bootstrap_*dashboard.py` |
 | Prometheus | Flink 指标采集和 targets API | `prometheus/prometheus.yml` |
-| Hive Metastore | Paimon Flink SQL Catalog 与 Flink CDC Sink 共享 HMS 元数据后端 | `docker-compose.yml`、`00_catalogs_and_tables.sql`、`mysql-to-paimon.yaml` |
+| Hive Metastore | Paimon Flink SQL Catalog 使用 HMS 元数据后端 | `docker-compose.yml`、`00_catalogs_and_tables.sql` |
 | 元数据与血缘导出 | DataHub 风格 JSON 和 MCP-style JSONL | `datahub/metadata`、`datahub/mcp` |
 | 本地工作流 | 批刷新、同步、治理、验证和运行历史 | `scripts/windows/init-flink-ddl.ps1`、`run-ads-batches.ps1`、`sync-starrocks-olap.ps1` |
-| 归因增强 | 30 天 LastClick；30 分钟直归、1/3/7/30 日间归、自然订单互斥分桶；订单级下钻 | `11_ads_attribution.sql` |
-| 反作弊增强 | 点击突增、异常 CTR、集中用户规则 | `12_ads_fraud.sql` |
 
 ## 部分实现或采用本地替代
 

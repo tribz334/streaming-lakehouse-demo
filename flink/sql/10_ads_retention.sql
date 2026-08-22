@@ -3,19 +3,17 @@ SET 'table.dml-sync' = 'true';
 
 TRUNCATE TABLE paimon.ad_dw.ads_advertiser_retention_di;
 
-CREATE TEMPORARY VIEW dwd_ad_events_latest AS
-SELECT *
-FROM paimon.ad_dw.dwd_ad_events_di /*+ OPTIONS('scan.mode' = 'latest') */;
-
 INSERT INTO paimon.ad_dw.ads_advertiser_retention_di
 WITH active AS (
-  SELECT DISTINCT event_date, advertiser_id
-  FROM dwd_ad_events_latest
-  WHERE spend > 0
+  -- The DWS advertiser table already has one additive row per advertiser/day.
+  -- Using it avoids re-aggregating raw events and keeps retention consistent
+  -- with the cost definition used by the other offline ADS datasets.
+  SELECT DISTINCT dt AS active_date, advertiser_id
+  FROM paimon.ad_dw.dws_advertiser
+  WHERE cost > 0
 ),
 cohort AS (
-  SELECT event_date AS cohort_date, 
-  advertiser_id
+  SELECT active_date AS cohort_date, advertiser_id
   FROM active
 )
 SELECT
@@ -33,14 +31,14 @@ SELECT
 FROM cohort b
 LEFT JOIN active r1
   ON b.advertiser_id = r1.advertiser_id
- AND r1.event_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '1' DAY AS STRING)
+ AND r1.active_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '1' DAY AS STRING)
 LEFT JOIN active r7
   ON b.advertiser_id = r7.advertiser_id
- AND r7.event_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '7' DAY AS STRING)
+ AND r7.active_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '7' DAY AS STRING)
 LEFT JOIN active r15
   ON b.advertiser_id = r15.advertiser_id
- AND r15.event_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '15' DAY AS STRING)
+ AND r15.active_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '15' DAY AS STRING)
 LEFT JOIN active r30
   ON b.advertiser_id = r30.advertiser_id
- AND r30.event_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '30' DAY AS STRING)
+ AND r30.active_date = CAST(CAST(b.cohort_date AS DATE) + INTERVAL '30' DAY AS STRING)
 GROUP BY b.cohort_date;

@@ -8,7 +8,6 @@ $schema = Get-Content -Raw -Path $schemaPath
 $artifactId = "ods_log-value"
 $groupId = "ad-demo"
 $artifactVersion = "10.0.0"
-$eventSchemaVersion = "10"
 
 $ready = $false
 $deadline = (Get-Date).AddSeconds(90)
@@ -59,9 +58,6 @@ if (-not $exists) {
         contentType = "application/json"
         references = @()
       }
-      labels = @{
-        schema_version = $eventSchemaVersion
-      }
     }
   } | ConvertTo-Json -Depth 12
 
@@ -96,9 +92,6 @@ if (-not $exists) {
         content = $schema
         contentType = "application/json"
         references = @()
-      }
-      labels = @{
-        schema_version = $eventSchemaVersion
       }
     } | ConvertTo-Json -Depth 12
 

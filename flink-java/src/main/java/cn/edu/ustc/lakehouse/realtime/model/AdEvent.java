@@ -9,6 +9,11 @@ public class AdEvent implements Serializable {
     private String eventId;
     private long eventTimeMillis;
     private String userId;
+    private String deviceId;
+    private int platform;
+    private String appVc;
+    private String browserVc;
+    private String sdkVc;
     private String advertiserId;
     private String campaignId;
     private String unitId;
@@ -18,6 +23,7 @@ public class AdEvent implements Serializable {
     private String media;
     private String commerceScene;
     private String eventType;
+    private long playDuring;
     private String attributionStatus;
     private BigDecimal spend;
     private BigDecimal orderGmv;
@@ -46,6 +52,16 @@ public class AdEvent implements Serializable {
     public void setEventTimeMillis(long eventTimeMillis) { this.eventTimeMillis = eventTimeMillis; }
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
+    public String getDeviceId() { return deviceId; }
+    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
+    public int getPlatform() { return platform; }
+    public void setPlatform(int platform) { this.platform = platform; }
+    public String getAppVc() { return appVc; }
+    public void setAppVc(String appVc) { this.appVc = appVc; }
+    public String getBrowserVc() { return browserVc; }
+    public void setBrowserVc(String browserVc) { this.browserVc = browserVc; }
+    public String getSdkVc() { return sdkVc; }
+    public void setSdkVc(String sdkVc) { this.sdkVc = sdkVc; }
     public String getAdvertiserId() { return advertiserId; }
     public void setAdvertiserId(String advertiserId) { this.advertiserId = advertiserId; }
     public String getCampaignId() { return campaignId; }
@@ -64,6 +80,8 @@ public class AdEvent implements Serializable {
     public void setCommerceScene(String commerceScene) { this.commerceScene = commerceScene; }
     public String getEventType() { return eventType; }
     public void setEventType(String eventType) { this.eventType = eventType; }
+    public long getPlayDuring() { return playDuring; }
+    public void setPlayDuring(long playDuring) { this.playDuring = playDuring; }
     public String getAttributionStatus() { return attributionStatus; }
     public void setAttributionStatus(String attributionStatus) { this.attributionStatus = attributionStatus; }
     public BigDecimal getSpend() { return spend; }

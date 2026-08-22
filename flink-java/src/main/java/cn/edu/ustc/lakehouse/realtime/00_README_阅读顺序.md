@@ -30,19 +30,15 @@ realtime/
 
 ### 03 `dwd/DwdLogProcessFunction.java`
 
-读取 Kafka `ods_log` 字符串，解析 JSON，并将数据分成广告、页面和脏数据三路。
+读取 Kafka `ods_log` 字符串，解析 JSON，并将数据分成广告和脏数据两路。
 
 ### 04 `model/AdEvent.java`
 
 广告行为及后续 DWS 统一事实模型。承载曝光、点击、计费和归因订单的公共指标字段。
 
-### 05 `model/PageLogEvent.java`
+### 05 `sink/KafkaDwdUtil.java`
 
-页面行为模型，承载页面进入、离开、停留时间、设备和来源信息。
-
-### 06 `sink/KafkaDwdUtil.java`
-
-将四类 DWD 结果写入 Kafka：`dwd_ad_action_log`、`dwd_page_log`、`dwd_dirty_log`、`dwd_order_detail`。
+将三类 DWD 结果写入 Kafka：`dwd_ad_action_log`、`dwd_dirty_log`、`dwd_order_detail`。
 
 ## 第三阶段：点击和订单双流归因
 

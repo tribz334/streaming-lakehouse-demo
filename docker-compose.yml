@@ -72,7 +72,7 @@ services:
       - /bin/bash
       - -lc
       - >-
-        for topic in ods_log dwd_ad_action_log dwd_page_log dwd_dirty_log dwd_order_detail; do /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --create --if-not-exists --topic $$topic --partitions 6 --replication-factor 1 --config min.insync.replicas=1; done
+        for topic in ods_log dwd_ad_action_log dwd_dirty_log dwd_order_detail; do /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --create --if-not-exists --topic $$topic --partitions 6 --replication-factor 1 --config min.insync.replicas=1; done
     labels:
       thesis.node: node-1
       thesis.role: cluster-bootstrap
@@ -101,6 +101,7 @@ services:
       thesis.role: flink-control
     command: jobmanager
     environment:
+      TZ: Asia/Shanghai
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         parallelism.default: 1
@@ -137,6 +138,7 @@ services:
       thesis.role: flink-compute
     command: taskmanager
     environment:
+      TZ: Asia/Shanghai
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 8

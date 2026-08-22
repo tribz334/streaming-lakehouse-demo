@@ -30,7 +30,7 @@ public final class AdBillCdcSource {
 
     private static AdBill toAdBill(Row row, String timeZone) {
         String billId = string(row, 0);
-        LocalDateTime billTime = (LocalDateTime) row.getField(9);
+        LocalDateTime billTime = (LocalDateTime) row.getField(11);
         AdBill detail = new AdBill();
         detail.setBillId(billId);
         detail.setBillTimeMillis(
@@ -40,9 +40,9 @@ public final class AdBillCdcSource {
         detail.setUnitId(string(row, 3));
         detail.setCreativeId(string(row, 4));
         detail.setUserId(string(row, 5));
-        detail.setMedia(string(row, 6));
-        detail.setCommerceScene(string(row, 7));
-        detail.setCost((java.math.BigDecimal) row.getField(8));
+        detail.setMedia(string(row, 8));
+        detail.setCommerceScene(string(row, 9));
+        detail.setCost(java.math.BigDecimal.valueOf((Long) row.getField(10)));
         return detail;
     }
 
@@ -54,15 +54,17 @@ public final class AdBillCdcSource {
     private static String createTableDdl(RealtimeJobConfig config) {
         return String.format("""
                 CREATE TEMPORARY TABLE mysql_ad_bill_cdc (
-                  bill_id STRING,
-                  advertiser_id STRING,
-                  campaign_id STRING,
-                  unit_id STRING,
-                  creative_id STRING,
-                  user_id STRING,
+                  bill_id BIGINT,
+                  advertiser_id BIGINT,
+                  campaign_id BIGINT,
+                  unit_id BIGINT,
+                  creative_id BIGINT,
+                  user_id BIGINT,
+                  slot_id BIGINT,
+                  billing_type TINYINT,
                   media STRING,
                   commerce_scene STRING,
-                  cost DECIMAL(18, 4),
+                  cost BIGINT,
                   bill_time TIMESTAMP(3),
                   updated_at TIMESTAMP(3),
                   PRIMARY KEY (bill_id) NOT ENFORCED

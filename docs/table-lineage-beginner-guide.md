@@ -6,7 +6,7 @@
 
 - Generator 是顾客提交的原始订单。
 - Kafka 是传送带，负责缓存和传递消息。
-- Flink CDC 把 MySQL 主数据持续同步成 Paimon DIM 表，事实链路只保存维度外键。
+- Flink CDC 将 MySQL 主数据持续同步为 Paimon 当前态 DIM；Paimon daily tag 保留最近 30 天的可查询快照。
 - ODS 是原料仓，尽量保留原始数据。
 - DIM 是字典，例如 `adv_001` 到底是哪家广告主。
 - DWD 是清洗、补全后的明细菜品，一行仍代表一个业务事件。
@@ -18,7 +18,7 @@
 
 ```text
 实时热路径：Kafka ods_log（创意/商品/广告位与事件上下文）-> 广播关联 Creative/Campaign DIM 补齐层级 ID -> dwd_ad_action_log；广告点击与 MySQL `order_detail` 商品订单进入 DwdOrderDetail -> dwd_order_detail；MySQL `bill_detail` 进入 DwdAdBill；三类事实随后汇合 -> DWS 10 秒聚合 -> StarRocks -> Superset
-离线湖仓：MySQL -> Flink CDC -> Paimon DIM/ODS；Paimon 快照 -> DWS/DM/ADS -> StarRocks
+离线湖仓：MySQL -> Flink CDC -> Paimon DIM/DWD；Paimon 快照 -> DWS/DM/ADS -> StarRocks
 ```
 
 ## 2. 表名后缀是什么意思
@@ -64,7 +64,7 @@ ODS 快照检查 + DIM 刷新
 
 ## 4. 数据源与 ODS
 
-### `ods_ad_events_di`：广告事件原始层
+### `ods_log_inc`：埋点日志原始层
 
 | 项目 | 说明 |
 |---|---|
@@ -79,12 +79,15 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 
 | MySQL 表 | 含义 | 湖仓下游 |
 |---|---|---|
-| `advertiser` | 广告主档案 | `dim_advertiser_df` |
-| `campaign` | 广告计划 | `dim_campaign_df` |
-| `unit` | 广告单元 | `dim_unit_df` |
-| `creative` | 广告创意 | `dim_creative_df` |
-| `order` | 跨渠道商品订单生命周期 | `ods_order`、实时订单归因 |
-| `ad_bill` | 广告计费记录 | `ods_ad_bill`、实时消耗汇总 |
+| `advertiser_info` | 广告主档案 | Flink CDC -> `dim_advertiser_zip` |
+| `campaign_info` | 广告计划 | Flink CDC -> `dim_campaign` |
+| `unit_info` | 广告单元 | Flink CDC -> `dim_unit` |
+| `creative_info` | 广告创意 | Flink CDC -> `dim_creative` |
+| `user_info` | C 端用户 | Flink CDC -> `dim_user_zip` |
+| `shop_info` | 店铺档案 | Flink CDC -> `dim_shop_zip` |
+| `product_info` | 商品档案 | Flink CDC -> `dim_product_zip` |
+| `order_detail` | 商品订单生命周期 | Flink CDC -> `dwd_order_detail_acc` |
+| `bill_detail` | 广告计费记录 | Flink CDC -> `dwd_ad_bill_detail_inc` |
 
 表结构在 `mysql/init/01_schema.sql`，演示主数据在 `mysql/init/02_seed.sql`。
 
@@ -94,17 +97,17 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 
 | 表 | 一行粒度 | 上游 | 下游 | 当前状态 |
 |---|---|---|---|---|
-| `dim_advertiser_df` | 一个广告主 | MySQL `advertiser_info` | DWD 补广告主名称、行业、等级；ADS 创意宽表 | 正常产出，约 39 行 |
-| `dim_campaign_df` | 一个广告计划 | MySQL `campaign_info` | DWD 补计划名称；ADS 创意宽表 | 正常产出，约 59 行 |
-| `dim_unit_df` | 一个广告单元 | MySQL `unit_info` | ADS 创意宽表补出价方式和金额 | 正常产出，约 76 行 |
-| `dim_creative_df` | 一个创意 | MySQL `creative_info` | DWD 补创意名称；ADS 创意宽表 | 正常产出，约 83 行 |
-| `dim_customer_df` | 一个客户 | 尚无源表 | 论文模型预留 | 空表 |
-| `dim_shop_df` | 一个店铺 | 尚无源表 | 论文电商扩展预留 | 空表 |
-| `dim_product_df` | 一个商品 | 尚无源表 | 论文电商扩展预留 | 空表 |
-| `dim_slot_df` | 一个广告位 | 尚无独立源表 | 论文媒体广告位扩展预留 | 空表 |
-| `dim_user_df` | 一个用户 | 尚无独立源表 | 论文用户画像扩展预留 | 空表 |
+| `dim_advertiser_zip` | 一个广告主当前版本 | MySQL `advertiser_info` CDC | ADS 创意宽表 | 主键 `advertiser_id`，daily tag 留历史 |
+| `dim_campaign` | 一个广告计划当前版本 | MySQL `campaign_info` CDC | DWS/ADS | 主键 `campaign_id`，daily tag 留历史 |
+| `dim_unit` | 一个广告单元当前版本 | MySQL `unit_info` CDC | DWS/ADS、商品匹配 | 主键 `unit_id`，daily tag 留历史 |
+| `dim_creative` | 一个广告创意当前版本 | MySQL `creative_info` CDC | DWS/ADS | 主键 `creative_id`，daily tag 留历史 |
+| `dim_user_zip` | 一个用户当前版本 | MySQL `user_info` CDC | 用户画像 | 主键 `uid`，daily tag 留历史 |
+| `dim_customer` | 一个客户 | 尚无源表 | 论文模型预留 | 空表 |
+| `dim_shop_zip` | 一个店铺当前版本 | MySQL `shop_info` CDC | 商品、订单分析 | 主键 `shop_id`，daily tag 留历史 |
+| `dim_product_zip` | 一个商品当前版本 | MySQL `product_info` CDC | 商品、订单分析 | 主键 `product_id`，daily tag 留历史 |
+| `dim_slot` | 一个广告位 | 尚无独立源表 | 论文媒体广告位扩展预留 | 空表 |
 
-前四张表由 `flink-cdc/mysql-to-paimon.yaml` 在完成 MySQL 全量快照后持续消费 binlog 更新；`flink/sql/07_offline_dim_snapshot.sql` 仅保留为迁移说明，不再执行 JDBC 刷新。后五张只在 `flink/sql/01_model_tables.sql` 建了表，没有任何 `INSERT INTO`，所以“看得见表”但“没有产出逻辑”。
+七张业务维表均由 `05_mysql_cdc_direct_to_dim.sql` 持续维护当前值；daily tag 用于按日回看，不再运行独立 ODS/DIM 日批刷新。
 
 ## 6. DWD：明细事实层
 
@@ -113,67 +116,57 @@ Generator 先从 MySQL 读取广告主、计划、单元、创意组合，然后
 | 项目 | 说明 |
 |---|---|
 | 一行代表 | 一个清洗并补充维度后的广告事件 |
-| 上游 | `ods_ad_events_di` + `dim_advertiser_df` + `dim_campaign_df` + `dim_creative_df` |
+| 上游 | `ods_log_inc` 拆分后的 DWD 动作 + 广告层级 DIM |
 | 下游 | 离线 DWS、DM 和 ADS |
 | 更新方式 | 不属于当前实时热路径 |
 
-实时 ODS 保留 SDK 的 `common/page/actions` 原始嵌套结构；每个 action 只携带 `creative_id`、`product_id`、广告位 `slot_id` 和事件上下文。Flink 将 actions 拆成逐条 DWD 事实，再通过广播 DIM 补齐 `unit_id / campaign_id / advertiser_id`。名称、行业和等级等展示属性不写入实时 DWD。
+实时 ODS 保留 SDK 的 `common/actions` 原始嵌套结构；每个 action 只携带 `creative_id`、`product_id`、广告位 `slot_id` 和事件上下文。Flink 将 actions 拆成逐条 DWD 事实，再通过广播 DIM 补齐 `unit_id / campaign_id / advertiser_id`。名称、行业和等级等展示属性不写入实时 DWD。
 
-### `dwd_order_lifecycle_df`：订单状态表
+### `dwd_order_detail_acc`：订单累积快照事实表
 
-一行代表一个商品订单当前生命周期，来自 MySQL `order_detail`，只保存用户、商品、金额和创建/支付/退款/完成时间，不保存广告层级。CDC Pipeline 将其同步到 Paimon `ods_order`；实时作业消费同一张表的 binlog，并通过 `user_id + product_id` 与 Kafka 点击完成广告归因。
+一行代表一个商品订单的完整当前生命周期。`shop_id` 由商品所属店铺得到；`creative_id / unit_id / slot_id` 来自实时 LastClick 结果，自然订单均为 NULL。`product_price`、`product_num`、`total_amount` 分别表示下单时商品单价、数量和总价（元），并满足 `total_amount = product_price * product_num`。表中还包含创建、取消、支付、确认收货、退款发起、退款完成和交易完成时间。终止时间按取消、退款完成、交易完成的顺序取第一个非空值；三者都为空时 `dt=9999-12-31`。Paimon `bucket=-1` 使 `order_id` 在所有分区全局唯一，订单闭环后从哨兵分区迁移到真实终止日分区。`update_at` 记录该 DWD 行最后一次生命周期或归因更新时间。
 
 ## 7. DWS：主题汇总层
 
 实时 10 秒指标不再物化为 Paimon DWS 表，而是在 `DwsAdMetric` 中完成窗口聚合后直接写入 StarRocks Primary Key 表。
 
-### 三张离线主题表
+### 四张离线主题表
 
 | 表 | 一行粒度 | 主要指标 | 典型下游 |
 |---|---|---|---|
-| `dws_creative_df` | 日期 + 创意 | 曝光、点击、转化、订单、成本、GMV、CTR、CVR、ROI | `ads_creative_offline_di` |
-| `dws_attribution_candidate_df` | 订单 + 候选点击 | 订单前 30 天候选点击、触点顺序、间隔分钟 | `dm_attribution_touchpoint_df` |
-| `dws_user_click_window_df` | 单次点击 + 用户窗口 | 1 小时/1 天点击数、曝光数、点击间隔、CTR 偏离 | `dm_antifraud_feature_df` |
+| `dws_creative` | 日期 + 创意 | 当日下发、曝光、点击、转化、消耗和订单指标 | `dm_creative` |
+| `dws_unit` | 日期 + 单元 | 按单元汇总的当日指标 | `dm_unit` |
+| `dws_campaign` | 日期 + 计划 | 按计划汇总的当日指标 | `dm_campaign` |
+| `dws_advertiser` | 日期 + 广告主 | 按广告主汇总的当日指标 | `dm_advertiser` |
 
-三张离线 DWS 统一由 `08_offline_dws.sql` 产出。归因和反作弊分别使用独立主题表，避免将不同粒度的数据塞入一张通用 DWS。
+四张离线 DWS 统一由 `08_offline_dws.sql` 产出。`dws_creative` 对广告动作、广告账单和订单生命周期分别按日聚合，再通过广告层级维度向上汇总到单元、计划和广告主。DWS 只保存可累加的每日事实，滚动窗口在 DM 计算。
 
 ## 8. DM：专题模型层
 
-### `dm_attribution_touchpoint_df`
+### `dm_creative`
 
-它从 DWS 候选触点中选出离订单最近的一次点击。没有候选点击的订单会保留为 `organic`，因此自然订单不会丢失。
+它从 `dws_creative` 生成创意主题宽表，一行代表“统计日期 + 创意”。计算以当天 `dim_creative` 全量分区为主表左连接，因此没有行为的创意也会得到零指标。表中维护发送、曝光、点击、转化、互动、播放、消耗和订单指标的最近 1 天、7 天、30 天及累计值，并保存消耗、创建订单、支付订单和退款订单的首次/末次发生日期；尚未采集的互动与播放窗口字段保留为 NULL。实现采用可任意重跑的历史重算，结果与“昨日 DM + 今日 DWS - 7/30 天前 DWS”的论文递推算法一致，但首次初始化和历史补数不依赖前一日 DM 分区。`ads_creative_offline_di` 从该表读取 1 日指标并在关联维度后重新计算 CTR、CVR、CPC、CPA 和 ROI。
 
-- 上游：`dws_attribution_candidate_df`。
-- 下游：`ads_order_attribution_detail_di` 和归因分析。
-- 代码：`09_offline_dm.sql`。
-- 指标：归因权重、归因 GMV、归因转化数、触点序号。
+### `dm_antifraud_feature`
 
-关联窗口和结果字段 `lookback_days` 现在统一为 30 天。
-
-### `dm_antifraud_feature_df`
-
-它从 `dws_user_click_window_df` 读取 1 小时/1 天点击数、CTR 偏离和点击间隔，输出 `HIGH_CLICK_BURST`、`ABNORMAL_CTR`、`HIGH_DAILY_CLICKS` 或 `NORMAL`，并生成 0.1-0.95 的风险分。
+该表仅保留表结构，当前离线 DWS/DM 主链路不再产出用户点击窗口中间表。
 
 ## 9. ADS：报表应用层
 
 | 表 | 上游 | 产出逻辑 | 对应业务/指标 | 类型 |
 |---|---|---|---|---|
-| `ads_advertiser_retention_di` | DWD 付费活跃事件 | 比较同一广告主在 cohort 日及 +1/+7/+15/+30 日是否仍有消费 | 广告主留存人数、留存率 | 离线 |
-| `ads_order_attribution_detail_di` | 归因 DM + 候选 DWS | 只选末次点击或自然订单，划分六个归因窗口 | 每单归因明细、归因时延、自然/直接/间接 | 离线 |
-| `ads_attribution_summary_di` | 订单归因明细 | 按日期、广告主、计划、归因时间段汇总 | 各归因窗口订单占比和 GMV 占比 | 离线 |
-| `ads_fraud_signal_di` | 反作弊 DM + 用户窗口 DWS | 按 1 分钟汇总 DM 命中的风险点击 | 可疑点击、可疑消耗、风险分 | 离线规则计算 |
-| `ads_creative_offline_di` | DWS 创意 + 四张 DIM | 拼接名称/行业/出价，并重算 CTR、CVR、CPC、CPA、ROI | Superset 创意多维离线看板 | 离线 |
+| `ads_advertiser_retention_di` | `dws_advertiser` 日汇总 | 比较同一广告主在 cohort 日及 +1/+7/+15/+30 日是否仍有消费 | 广告主留存人数、留存率 | 离线 |
+| `ads_order_attribution_detail_di` | 订单累积事实 + 点击事实 + 广告层级 DIM | 同用户同商品、下单前 30 天内最后一次点击；按 30 分钟、1/3/7/30 日或自然订单互斥分类 | 订单级间接归因下钻 | 离线 |
+| `ads_attribution_summary_di` | `ads_order_attribution_detail_di` | 按日期、广告主、计划、归因周期聚合订单数与 GMV | 归因分析看板 | 离线 |
+| `ads_creative_offline_di` | `dm_creative` + 四张广告层级当前态 DIM | 读取创意 DM 的 1 日可加指标，补齐名称/行业/出价，并重算 CTR、CVR、CPC、CPA、ROI | Superset 创意多维离线看板 | 离线 |
 
 关键代码：
 
 | 结果 | SQL 文件 |
 |---|---|
 | 留存 | `flink/sql/10_ads_retention.sql` |
-| 归因明细和汇总 | `flink/sql/11_ads_attribution.sql` |
-| 反作弊信号 | `flink/sql/12_ads_fraud.sql` |
+| 订单间接归因 | `flink/sql/11_ads_order_attribution.sql` |
 | 创意离线指标 | `flink/sql/13_ads_creative_offline.sql` |
-
-归因六类由订单与最后一次点击的分钟差决定：无点击是自然订单；不超过 30 分钟是直接归因；随后依次进入 1 日、3 日、7 日、30 日间接归因。Generator 在 `produce_events.py:65-69` 按目标比例生成这些订单旅程，在 `:226-256` 人为构造不同时间差，所以数据库业务时间可以覆盖完整 30 天窗口。
 
 ## 10. 指标公式（最常用）
 
@@ -209,9 +202,9 @@ Paimon ADS -> scripts/windows/sync-starrocks-olap.ps1 -> StarRocks 快照
 | 状态 | 表 |
 |---|---|
 | 实时持续更新 | StarRocks `realtime_ad_attribution_metrics_10s` |
-| 离线兼容快照 | `ods_ad_events_di`、`dwd_ad_events_di` |
+| ODS 埋点原文 | `ods_log_inc` |
 | 离线批量重算 | DWD 五张专表、DWM、六张离线 DWS、DM、各 ADS 表 |
-| 正常维表快照 | `dim_advertiser_df`、`dim_campaign_df`、`dim_unit_df`、`dim_creative_df` |
-| 只有表结构、尚无数据源 | `dim_customer_df`、`dim_shop_df`、`dim_product_df`、`dim_slot_df`、`dim_user_df` |
+| CDC 当前态维表（daily tag 留历史） | `dim_advertiser_zip`、`dim_campaign`、`dim_unit`、`dim_creative`、`dim_user_zip`、`dim_shop_zip`、`dim_product_zip` |
+| 只有表结构、尚无数据源 | `dim_customer`、`dim_slot` |
 
 最后记住一个判断方法：先找表的 `CREATE TABLE` 理解字段，再全局搜索 `INSERT INTO 表名` 找产出逻辑，再看 `FROM/JOIN` 确认上游，最后搜索谁在 `FROM 表名` 确认下游。只有建表、没有 INSERT 的表，就是模型预留而不是正在生产的数据表。

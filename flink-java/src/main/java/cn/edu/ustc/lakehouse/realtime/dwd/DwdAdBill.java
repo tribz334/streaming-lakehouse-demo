@@ -20,7 +20,7 @@ public final class DwdAdBill {
 
     private static AdEvent toAdEvent(AdBill bill) {
         AdEvent event = new AdEvent();
-        event.setEventId("bill-" + bill.getBillId());
+        event.setEventId(bill.getBillId());
         event.setEventTimeMillis(bill.getBillTimeMillis());
         event.setAdvertiserId(bill.getAdvertiserId());
         event.setCampaignId(bill.getCampaignId());

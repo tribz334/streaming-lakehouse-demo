@@ -54,13 +54,13 @@ try {
     throw "Expected Flink 2.2.0, got $($overview.'flink-version')."
   }
   $jobs = Invoke-RestMethod -Uri "http://127.0.0.1:18082/jobs/overview" -TimeoutSec 10
-  $cdc = @($jobs.jobs | Where-Object {
-    $_.name -eq "mysql-cdc-to-paimon" -and $_.state -eq "RUNNING"
+  $lifecycle = @($jobs.jobs | Where-Object {
+    $_.name -eq "dwd-order-lifecycle-acc" -and $_.state -eq "RUNNING"
   })
-  if ($cdc.Count -ne 1) {
-    throw "Expected exactly one running mysql-cdc-to-paimon job, got $($cdc.Count)."
+  if ($lifecycle.Count -ne 1) {
+    throw "Expected exactly one running dwd-order-lifecycle-acc job, got $($lifecycle.Count)."
   }
-  Write-Host "Flink 2.2.0 and MySQL CDC pipeline are running."
+  Write-Host "Flink 2.2.0, MySQL CDC, realtime attribution, and accumulating lifecycle jobs are running."
 } catch {
   Write-Warning "Flink multi-node verification failed: $($_.Exception.Message)"
   throw

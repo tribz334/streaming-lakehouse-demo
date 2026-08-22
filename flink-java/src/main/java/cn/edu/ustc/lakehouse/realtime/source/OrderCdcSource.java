@@ -42,23 +42,21 @@ public final class OrderCdcSource {
     }
 
     private static OrderDetail toPaidOrder(Row row, String timeZone) {
-        String status = string(row, 4);
-        LocalDateTime createTime = (LocalDateTime) row.getField(5);
-        LocalDateTime paymentTime = (LocalDateTime) row.getField(6);
-        if (createTime == null || paymentTime == null || !("paid".equalsIgnoreCase(status)
-                || "finished".equalsIgnoreCase(status)
-                || "completed".equalsIgnoreCase(status))) {
+        Integer status = (Integer) row.getField(12);
+        LocalDateTime createTime = (LocalDateTime) row.getField(13);
+        LocalDateTime paymentTime = (LocalDateTime) row.getField(15);
+        if (createTime == null || paymentTime == null || status == null || status < 2) {
             return null;
         }
 
         String orderId = string(row, 0);
         ZoneId zoneId = ZoneId.of(timeZone);
         OrderDetail order = new OrderDetail();
-        order.setEventId("mysql-cdc-" + orderId + "-" + paymentTime);
+        order.setEventId(orderId);
         order.setOrderId(orderId);
         order.setUserId(string(row, 1));
         order.setProductId(string(row, 2));
-        order.setOrderGmv((BigDecimal) row.getField(3));
+        order.setOrderGmv(BigDecimal.valueOf((Long) row.getField(6)));
         order.setCreateTimeMillis(createTime.atZone(zoneId).toInstant().toEpochMilli());
         order.setPaymentTimeMillis(paymentTime.atZone(zoneId).toInstant().toEpochMilli());
         order.setAttributionStatus("pending");
@@ -73,14 +71,25 @@ public final class OrderCdcSource {
     private static String createTableDdl(RealtimeJobConfig config) {
         return String.format("""
                 CREATE TEMPORARY TABLE mysql_order_cdc (
-                  order_id STRING,
-                  user_id STRING,
-                  product_id STRING,
-                  order_amount DECIMAL(18, 2),
-                  order_status STRING,
+                  order_id BIGINT,
+                  user_id BIGINT,
+                  product_id BIGINT,
+                  shop_id BIGINT,
+                  product_price BIGINT,
+                  product_num INT,
+                  total_amount BIGINT,
+                  payment_method INT,
+                  receiver_name STRING,
+                  receiver_phone STRING,
+                  shipping_address STRING,
+                  tracking_number STRING,
+                  order_status INT,
                   create_time TIMESTAMP(3),
+                  cancel_time TIMESTAMP(3),
                   payment_time TIMESTAMP(3),
+                  confirm_time TIMESTAMP(3),
                   refund_time TIMESTAMP(3),
+                  refund_finish_time TIMESTAMP(3),
                   finish_time TIMESTAMP(3),
                   updated_at TIMESTAMP(3),
                   PRIMARY KEY (order_id) NOT ENFORCED

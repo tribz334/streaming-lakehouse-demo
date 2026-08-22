@@ -8,6 +8,6 @@ CREATE CATALOG paimon WITH (
   'warehouse' = 'file:///warehouse/paimon'
 );
 
-SELECT advertiser_id, advertiser_name, industry, tier
-FROM paimon.ad_dw.dim_advertiser_df
-WHERE advertiser_id = 'ADV_CDC_VERIFY';
+SELECT advertiser_id, advertiser_name, industry_l1_name, industry_l2_name
+FROM paimon.ad_dw.dim_advertiser_zip
+WHERE advertiser_id = 999999;

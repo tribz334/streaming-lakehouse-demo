@@ -4,8 +4,8 @@ USE ad_ods;
 -- the same column from mysql/init/01_schema.sql.
 -- Append instead of inserting in the middle: Hive-backed Paimon can evolve an
 -- appended field without reordering the existing gmv and lifecycle columns.
-ALTER TABLE order_detail ADD COLUMN product_id VARCHAR(64) NULL;
+ALTER TABLE order_detail ADD COLUMN product_id BIGINT NULL;
 UPDATE order_detail
 SET product_id = CONCAT('product_', creative_id)
 WHERE product_id IS NULL OR product_id = '';
-ALTER TABLE order_detail MODIFY COLUMN product_id VARCHAR(64) NOT NULL;
+ALTER TABLE order_detail MODIFY COLUMN product_id BIGINT NOT NULL;

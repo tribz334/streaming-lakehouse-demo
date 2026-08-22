@@ -25,7 +25,7 @@ ALTER TABLE product_info
 INSERT INTO shop_info
   (shop_id, shop_name, shop_type, region, business_status, opened_at)
 SELECT
-  LEFT(SHA2(CONCAT('shop:', CONCAT('shop_', advertiser_id)), 256), 20),
+  1000 + advertiser_id,
   CONCAT(advertiser_name, CONVERT(UNHEX('E5AE98E696B9E69797E888B0E5BA97') USING utf8mb4)),
   CASE WHEN industry = 'ecommerce' THEN 'platform' ELSE 'flagship' END,
   home_region,
@@ -37,8 +37,8 @@ INSERT INTO product_info
   (product_id, shop_id, product_name, brand, category, `销售价格`,
    `库存数量`, status, created_at)
 SELECT
-  LEFT(SHA2(CONCAT('product:', CONCAT('product_', cr.creative_id)), 256), 20),
-  LEFT(SHA2(CONCAT('shop:', CONCAT('shop_', a.advertiser_id)), 256), 20),
+  100000000 + cr.creative_id,
+  1000 + a.advertiser_id,
   CONCAT(a.advertiser_name, ' ', cr.creative_name),
   a.advertiser_name,
   a.industry,

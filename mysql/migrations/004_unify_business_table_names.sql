@@ -9,7 +9,7 @@ RENAME TABLE
   ad_bill TO bill_detail;
 
 CREATE TABLE IF NOT EXISTS user_info (
-  user_id VARCHAR(32) PRIMARY KEY,
+  user_id BIGINT PRIMARY KEY,
   user_type VARCHAR(32) NOT NULL DEFAULT 'consumer',
   register_channel VARCHAR(32) NOT NULL DEFAULT 'organic',
   region VARCHAR(64) NULL,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS user_info (
 );
 
 CREATE TABLE IF NOT EXISTS shop_info (
-  shop_id VARCHAR(32) PRIMARY KEY,
+  shop_id BIGINT PRIMARY KEY,
   shop_name VARCHAR(128) NOT NULL,
   shop_type VARCHAR(32) NOT NULL DEFAULT 'flagship',
   region VARCHAR(64) NULL,
@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS shop_info (
 );
 
 CREATE TABLE IF NOT EXISTS product_info (
-  product_id VARCHAR(64) PRIMARY KEY,
-  shop_id VARCHAR(32) NULL,
+  product_id BIGINT PRIMARY KEY,
+  shop_id BIGINT NULL,
   product_name VARCHAR(128) NOT NULL,
   brand VARCHAR(128) NULL,
   category VARCHAR(64) NULL,

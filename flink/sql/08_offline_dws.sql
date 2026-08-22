@@ -2,109 +2,88 @@ SET 'execution.runtime-mode' = 'batch';
 SET 'table.dml-sync' = 'true';
 SET 'table.exec.sink.upsert-materialize' = 'NONE';
 
-TRUNCATE TABLE paimon.ad_dw.dws_creative_df;
-TRUNCATE TABLE paimon.ad_dw.dws_attribution_candidate_df;
-TRUNCATE TABLE paimon.ad_dw.dws_user_click_window_df;
+TRUNCATE TABLE paimon.ad_dw.dws_creative;
+TRUNCATE TABLE paimon.ad_dw.dws_unit;
+TRUNCATE TABLE paimon.ad_dw.dws_campaign;
+TRUNCATE TABLE paimon.ad_dw.dws_advertiser;
 
-CREATE TEMPORARY VIEW thesis_events AS
-SELECT * FROM paimon.ad_dw.dwd_ad_events_di /*+ OPTIONS('scan.mode'='latest') */;
-
-INSERT INTO paimon.ad_dw.dws_creative_df
-SELECT event_date,creative_id,MAX(campaign_id),MAX(creative_name),
-  SUM(CASE WHEN event_type='impression' THEN 1 ELSE 0 END),
-  SUM(CASE WHEN event_type='click' THEN 1 ELSE 0 END),
-  SUM(CASE WHEN event_type='conversion' THEN 1 ELSE 0 END),
-  CAST(SUM(spend) AS DECIMAL(18,2)),CAST(SUM(gmv) AS DECIMAL(18,2)),
-  CAST(SUM(spend) AS DECIMAL(18,2)),CAST(SUM(gmv) AS DECIMAL(18,2)),
-  CAST(SUM(spend) AS DECIMAL(18,2)),
-  CAST(SUM(CASE WHEN event_type='click' THEN 1 ELSE 0 END)/NULLIF(SUM(CASE WHEN event_type='impression' THEN 1 ELSE 0 END),0) AS DECIMAL(8,6)),
-  CAST(SUM(CASE WHEN event_type='conversion' THEN 1 ELSE 0 END)/NULLIF(SUM(CASE WHEN event_type='click' THEN 1 ELSE 0 END),0) AS DECIMAL(8,6)),
-  CAST(SUM(gmv)/NULLIF(SUM(spend),0) AS DECIMAL(10,4)),
-  SUM(CASE WHEN event_type='order' THEN 1 ELSE 0 END)
-FROM thesis_events GROUP BY event_date,creative_id;
-
-INSERT INTO paimon.ad_dw.dws_attribution_candidate_df
-WITH outcomes AS (
-  SELECT event_date,event_id,order_id,event_ts,user_id,advertiser_id,advertiser_name,
-    campaign_id,campaign_name,gmv
-  FROM thesis_events
-  WHERE event_type='order'
-), touchpoints AS (
-  SELECT event_id,event_ts,user_id,creative_id,campaign_id,campaign_name,
-    advertiser_id,advertiser_name,spend
-  FROM thesis_events
-  WHERE event_type='click'
-), candidates AS (
+INSERT INTO paimon.ad_dw.dws_creative
+WITH event_daily AS (
   SELECT
-    o.event_date,
-    CONCAT(o.event_id,'_',COALESCE(t.event_id,'organic')) AS candidate_id,
-    o.event_id AS outcome_event_id,o.order_id,o.event_ts AS outcome_time,o.user_id,
-    o.advertiser_id AS order_advertiser_id,o.advertiser_name AS order_advertiser_name,
-    o.campaign_id AS order_campaign_id,o.campaign_name AS order_campaign_name,o.gmv AS order_gmv,
-    t.event_id AS touch_event_id,t.event_ts AS touch_time,t.creative_id,
-    t.campaign_id,t.campaign_name,t.advertiser_id,t.advertiser_name,t.spend AS touch_spend,
-    ROW_NUMBER() OVER(PARTITION BY o.event_id ORDER BY t.event_ts DESC) AS touchpoint_seq
-  FROM outcomes o
-  LEFT JOIN touchpoints t
-    ON o.user_id=t.user_id
-   AND o.advertiser_id=t.advertiser_id
-   AND t.event_ts<=o.event_ts
-   AND t.event_ts>=o.event_ts-INTERVAL '30' DAY
+    dt,
+    creative_id,
+    SUM(CASE WHEN action_type='delivery' THEN 1 ELSE 0 END) AS delivery_cnt,
+    SUM(CASE WHEN action_type='impression' THEN 1 ELSE 0 END) AS impression_cnt,
+    SUM(CASE WHEN action_type='click' THEN 1 ELSE 0 END) AS click_cnt,
+    SUM(CASE WHEN action_type='conversion' THEN 1 ELSE 0 END) AS conversion_cnt
+  FROM paimon.ad_dw.dwd_ad_action_log_inc
+  WHERE creative_id IS NOT NULL
+  GROUP BY dt, creative_id
+), bill_daily AS (
+  SELECT dt, creative_id, SUM(cost) AS cost
+  FROM paimon.ad_dw.dwd_ad_bill_detail_inc
+  GROUP BY dt, creative_id
+), order_changes AS (
+  SELECT creative_id, SUBSTRING(payment_time, 1, 10) AS metric_date,
+    1 AS order_pay_cnt, total_amount AS order_pay_gmv,
+    0 AS order_refund_cnt, CAST(0 AS BIGINT) AS order_refund_gmv,
+    CASE WHEN order_status IN (3,4,7) THEN 1 ELSE 0 END AS order_valid_cnt,
+    CASE WHEN order_status IN (3,4,7) THEN total_amount ELSE CAST(0 AS BIGINT) END AS order_valid_gmv
+  FROM paimon.ad_dw.dwd_order_detail_acc
+  WHERE creative_id IS NOT NULL AND payment_time IS NOT NULL
+  UNION ALL
+  SELECT creative_id, SUBSTRING(refund_finish_time, 1, 10),
+    0, CAST(0 AS BIGINT), 1, total_amount, 0, CAST(0 AS BIGINT)
+  FROM paimon.ad_dw.dwd_order_detail_acc
+  WHERE creative_id IS NOT NULL AND refund_finish_time IS NOT NULL
+), order_daily AS (
+  SELECT metric_date AS dt, creative_id,
+    SUM(order_pay_cnt) AS order_pay_cnt, SUM(order_pay_gmv) AS order_pay_gmv,
+    SUM(order_refund_cnt) AS order_refund_cnt, SUM(order_refund_gmv) AS order_refund_gmv,
+    SUM(order_valid_cnt) AS order_valid_cnt, SUM(order_valid_gmv) AS order_valid_gmv
+  FROM order_changes
+  GROUP BY metric_date, creative_id
 )
-SELECT event_date,candidate_id,outcome_event_id,order_id,outcome_time,user_id,
-  order_advertiser_id,order_advertiser_name,order_campaign_id,order_campaign_name,
-  CAST(order_gmv AS DECIMAL(18,2)),touch_event_id,touch_time,creative_id,campaign_id,
-  campaign_name,advertiser_id,advertiser_name,touch_spend,CAST(touchpoint_seq AS INT),
-  CASE WHEN touch_event_id IS NULL THEN CAST(NULL AS BIGINT)
-       ELSE TIMESTAMPDIFF(MINUTE,touch_time,outcome_time) END
-FROM candidates;
+SELECT
+  COALESCE(e.creative_id, b.creative_id, o.creative_id),
+  COALESCE(e.delivery_cnt, 0), COALESCE(e.impression_cnt, 0),
+  COALESCE(e.click_cnt, 0), COALESCE(e.conversion_cnt, 0),
+  COALESCE(b.cost, 0),
+  COALESCE(o.order_pay_cnt, 0), COALESCE(o.order_pay_gmv, 0),
+  COALESCE(o.order_refund_cnt, 0), COALESCE(o.order_refund_gmv, 0),
+  COALESCE(o.order_valid_cnt, 0), COALESCE(o.order_valid_gmv, 0),
+  COALESCE(e.dt, b.dt, o.dt)
+FROM event_daily e
+FULL OUTER JOIN bill_daily b
+  ON e.dt = b.dt AND e.creative_id = b.creative_id
+FULL OUTER JOIN order_daily o
+  ON COALESCE(e.dt, b.dt) = o.dt
+ AND COALESCE(e.creative_id, b.creative_id) = o.creative_id;
 
-INSERT INTO paimon.ad_dw.dws_user_click_window_df
-WITH raw_clicks AS (
-  SELECT event_date,event_id,event_ts,user_id,creative_id,media,advertiser_id,
-    advertiser_name,spend
-  FROM thesis_events
-  WHERE event_type='click'
-), daily_clicks AS (
-  SELECT event_date,user_id,COUNT(*) AS click_cnt_1d
-  FROM raw_clicks
-  GROUP BY event_date,user_id
-), sequenced_clicks AS (
-  SELECT event_date,event_id,event_ts,user_id,creative_id,media,advertiser_id,
-    advertiser_name,spend,
-    LAG(event_ts) OVER(PARTITION BY user_id ORDER BY event_ts) AS previous_click_time
-  FROM raw_clicks
-), clicks AS (
-  SELECT s.event_date,s.event_id,s.event_ts,s.user_id,s.creative_id,s.media,
-    s.advertiser_id,s.advertiser_name,s.spend,d.click_cnt_1d,s.previous_click_time
-  FROM sequenced_clicks s
-  JOIN daily_clicks d ON s.event_date=d.event_date AND s.user_id=d.user_id
-), rolling_features AS (
-  SELECT
-    c.event_date,c.event_id,c.event_ts,c.user_id,c.creative_id,c.media,
-    c.advertiser_id,c.advertiser_name,c.spend,c.click_cnt_1d,c.previous_click_time,
-    SUM(CASE WHEN h.event_type='click' THEN 1 ELSE 0 END) AS click_cnt_1h,
-    SUM(CASE WHEN h.event_type='impression' THEN 1 ELSE 0 END) AS impression_cnt_1h,
-    SUM(CASE WHEN h.event_type='impression'
-              AND h.event_ts>=c.event_ts-INTERVAL '1' MINUTE THEN 1 ELSE 0 END) AS impression_cnt_1m
-  FROM clicks c
-  LEFT JOIN thesis_events h
-    ON h.user_id=c.user_id
-   AND h.media=c.media
-   AND h.event_ts<=c.event_ts
-   AND h.event_ts>=c.event_ts-INTERVAL '1' HOUR
-  GROUP BY c.event_date,c.event_id,c.event_ts,c.user_id,c.creative_id,c.media,
-    c.advertiser_id,c.advertiser_name,c.spend,c.click_cnt_1d,c.previous_click_time
-)
-SELECT event_date,event_id,event_ts,user_id,user_id,CAST(NULL AS STRING),creative_id,media,
-  advertiser_id,advertiser_name,media,spend,
-  CAST(click_cnt_1h AS INT),CAST(click_cnt_1d AS INT),CAST(impression_cnt_1h AS INT),
-  CAST(impression_cnt_1m AS INT),CAST(click_cnt_1h AS INT),1,
-  CASE WHEN previous_click_time IS NULL THEN CAST(NULL AS BIGINT)
-       ELSE TIMESTAMPDIFF(SECOND,previous_click_time,event_ts)*1000 END,
-  CAST(
-    CASE WHEN impression_cnt_1h=0 THEN click_cnt_1h
-         ELSE click_cnt_1h*1.0/impression_cnt_1h-0.10 END
-    AS DECIMAL(10,6)),
-  EXTRACT(HOUR FROM event_ts) BETWEEN 0 AND 5
-FROM rolling_features;
+INSERT INTO paimon.ad_dw.dws_unit
+SELECT u.unit_id,
+  SUM(d.delivery_cnt), SUM(d.impression_cnt), SUM(d.click_cnt), SUM(d.conversion_cnt), SUM(d.cost),
+  SUM(d.order_pay_cnt), SUM(d.order_pay_gmv), SUM(d.order_refund_cnt), SUM(d.order_refund_gmv),
+  SUM(d.order_valid_cnt), SUM(d.order_valid_gmv), d.dt
+FROM paimon.ad_dw.dws_creative d
+JOIN paimon.ad_dw.dim_creative c ON d.creative_id=c.creative_id
+JOIN paimon.ad_dw.dim_unit u ON c.unit_id=u.unit_id
+GROUP BY u.unit_id, d.dt;
+
+INSERT INTO paimon.ad_dw.dws_campaign
+SELECT u.campaign_id,
+  SUM(d.delivery_cnt), SUM(d.impression_cnt), SUM(d.click_cnt), SUM(d.conversion_cnt), SUM(d.cost),
+  SUM(d.order_pay_cnt), SUM(d.order_pay_gmv), SUM(d.order_refund_cnt), SUM(d.order_refund_gmv),
+  SUM(d.order_valid_cnt), SUM(d.order_valid_gmv), d.dt
+FROM paimon.ad_dw.dws_unit d
+JOIN paimon.ad_dw.dim_unit u ON d.unit_id=u.unit_id
+GROUP BY u.campaign_id, d.dt;
+
+INSERT INTO paimon.ad_dw.dws_advertiser
+SELECT c.advertiser_id,
+  SUM(d.delivery_cnt), SUM(d.impression_cnt), SUM(d.click_cnt), SUM(d.conversion_cnt), SUM(d.cost),
+  SUM(d.order_pay_cnt), SUM(d.order_pay_gmv), SUM(d.order_refund_cnt), SUM(d.order_refund_gmv),
+  SUM(d.order_valid_cnt), SUM(d.order_valid_gmv), d.dt
+FROM paimon.ad_dw.dws_campaign d
+JOIN paimon.ad_dw.dim_campaign c ON d.campaign_id=c.campaign_id
+GROUP BY c.advertiser_id, d.dt;

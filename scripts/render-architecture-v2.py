@@ -74,7 +74,7 @@ rect(1015, 165, 420, 60, "ADS 应用层", ("留存 | 归因 | 反作弊",), gray
 rect(1015, 255, 420, 75, "DWS 汇总层", ("消耗 · GMV · 曝光 · 点击 · 转化 · 订单", "CTR · CVR · ROI"), fs=12)
 rect(1015, 370, 260, 80, "DWD 明细层", ("清洗 · 去重 · 维度补全", "dwd_ad_events_di"), fs=12)
 rect(1305, 370, 130, 80, "DIM 维度层", ("广告主 · 计划", "单元 · 创意"), gray=True, fs=11)
-rect(1015, 505, 420, 75, "ODS 原始层", ("ods_ad_events_di",), gray=True, fs=12)
+rect(1015, 505, 420, 75, "ODS 原始层", ("ods_log_inc",), gray=True, fs=12)
 d.text((1225, 625), "统一 Schema · 主键语义 · Snapshot · Time Travel · Compaction", font=f(12), fill="#444444", anchor="ma")
 
 zone(1505, 100, 280, 560, "查询与应用")

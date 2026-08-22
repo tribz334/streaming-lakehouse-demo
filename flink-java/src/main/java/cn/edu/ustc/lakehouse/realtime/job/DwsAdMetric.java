@@ -11,7 +11,6 @@ import cn.edu.ustc.lakehouse.realtime.model.AdClickEvent;
 import cn.edu.ustc.lakehouse.realtime.model.AdEvent;
 import cn.edu.ustc.lakehouse.realtime.model.CreativeDimChange;
 import cn.edu.ustc.lakehouse.realtime.model.OrderDetail;
-import cn.edu.ustc.lakehouse.realtime.model.PageLogEvent;
 import cn.edu.ustc.lakehouse.realtime.model.RealtimeMetric;
 import cn.edu.ustc.lakehouse.realtime.sink.KafkaDwdUtil;
 import cn.edu.ustc.lakehouse.realtime.sink.StarRocksUtil;
@@ -40,8 +39,6 @@ import java.time.Duration;
 public final class DwsAdMetric {
     private static final OutputTag<String> DIRTY_EVENTS =
             new OutputTag<>("dirty-ad-events", Types.STRING);
-    private static final OutputTag<PageLogEvent> PAGE_EVENTS =
-            new OutputTag<>("page-events") {};
     private static final OutputTag<String> DIM_DIRTY_EVENTS =
             new OutputTag<>("dirty-dim-enrichment", Types.STRING);
 
@@ -75,12 +72,11 @@ public final class DwsAdMetric {
                 "Kafka ods_log source");
         
         // =======================
-        // DWD层：标准化后的广告事件对象 AdEvents，同时通过侧输出流分离为PageLogs以及DirtyLogs
+        // DWD层：标准化后的广告事件对象 AdEvents，同时通过侧输出流分离 DirtyLogs
         // =======================
         SingleOutputStreamOperator<AdEvent> parsedEvents = rawEvents
-                .process(new DwdLogProcessFunction(PAGE_EVENTS, DIRTY_EVENTS))
+                .process(new DwdLogProcessFunction(DIRTY_EVENTS))
                 .name("DWD log parse, validate and dirty-data split");
-        KafkaDwdUtil.sinkDwdPageLog(parsedEvents.getSideOutput(PAGE_EVENTS), config);
         KafkaDwdUtil.sinkDwdDirtyLog(parsedEvents.getSideOutput(DIRTY_EVENTS), config);
 
         BroadcastStream<CreativeDimChange> creativeDimensions = CreativeDimCdcSource

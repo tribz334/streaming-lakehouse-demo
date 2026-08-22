@@ -1,7 +1,6 @@
 package cn.edu.ustc.lakehouse.realtime.dwd;
 
 import cn.edu.ustc.lakehouse.realtime.model.AdEvent;
-import cn.edu.ustc.lakehouse.realtime.model.PageLogEvent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,18 +11,14 @@ import org.apache.flink.util.OutputTag;
 import java.math.BigDecimal;
 
 /**
- * Parses the raw SDK report retained in ods_log. Page data is routed to its
- * side output and every item in actions is flattened into one DWD AdEvent.
+ * Parses the raw SDK report retained in ods_log and flattens every item in
+ * actions into one DWD AdEvent.
  */
 public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent> {
-    private final OutputTag<PageLogEvent> pageOutputTag;
     private final OutputTag<String> dirtyOutputTag;
     private transient ObjectMapper objectMapper;
 
-    public DwdLogProcessFunction(
-            OutputTag<PageLogEvent> pageOutputTag,
-            OutputTag<String> dirtyOutputTag) {
-        this.pageOutputTag = pageOutputTag;
+    public DwdLogProcessFunction(OutputTag<String> dirtyOutputTag) {
         this.dirtyOutputTag = dirtyOutputTag;
     }
 
@@ -37,15 +32,11 @@ public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent
         try {
             JsonNode report = objectMapper.readTree(value);
             JsonNode common = requiredObject(report, "common");
+            requiredLong(report, "bus_id");
             requiredLong(report, "app_id");
             requiredLong(report, "log_id");
-            requiredText(report, "report_id");
+            requiredText(report, "msg_id");
             requiredLong(report, "ts");
-
-            JsonNode page = report.get("page");
-            if (page != null && !page.isNull()) {
-                context.output(pageOutputTag, toPageLog(page, common));
-            }
 
             JsonNode actions = report.get("actions");
             if (actions == null || !actions.isArray()) {
@@ -65,30 +56,22 @@ public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent
         event.setEventId(requiredText(action, "event_id"));
         event.setEventTimeMillis(requiredLong(action, "ts"));
         event.setUserId(requiredText(common, "uid"));
+        event.setDeviceId(requiredText(common, "device_id"));
+        event.setPlatform((int) requiredLong(common, "platform"));
+        event.setAppVc(requiredText(common, "app_version"));
+        event.setBrowserVc(textOrDefault(common, "browser_version", ""));
+        event.setSdkVc(requiredText(common, "sdk_version"));
         event.setSlotId(requiredText(action, "slot_id"));
         event.setCreativeId(requiredText(action, "creative_id"));
         event.setProductId(textOrDefault(action, "product_id", event.getCreativeId()));
         event.setMedia(textOrDefault(action, "media", "unknown"));
         event.setCommerceScene(textOrDefault(action, "commerce_scene", "shop"));
         event.setEventType(normalizeAction(actionName));
+        event.setPlayDuring(requiredLong(action, "play_during"));
         event.setSpend(BigDecimal.ZERO);
         event.setOrderGmv(BigDecimal.ZERO);
         event.setAttributedGmv(BigDecimal.ZERO);
         event.setOrganicGmv(BigDecimal.ZERO);
-        return event;
-    }
-
-    private PageLogEvent toPageLog(JsonNode page, JsonNode common) {
-        PageLogEvent event = new PageLogEvent();
-        event.setEventId(requiredText(page, "event_id"));
-        event.setEventTimeMillis(requiredLong(page, "ts"));
-        event.setUserId(requiredText(common, "uid"));
-        event.setEventType(requiredText(page, "event_type"));
-        event.setPageId(requiredText(page, "page_id"));
-        event.setLastPageId(textOrDefault(page, "last_page_id", null));
-        event.setDurationMillis(longOrDefault(page, "during_time", 0L));
-        event.setDeviceId(textOrDefault(common, "device_id", "unknown"));
-        event.setSource(textOrDefault(page, "source_type", "direct"));
         return event;
     }
 
@@ -106,17 +89,12 @@ public final class DwdLogProcessFunction extends ProcessFunction<String, AdEvent
 
     private static String normalizeAction(String action) {
         switch (action) {
-            case "send": return "send";
+            case "send": return "delivery";
             case "show": return "impression";
             case "click": return "click";
             case "convert": return "conversion";
             default: throw new IllegalArgumentException("unsupported action: " + action);
         }
-    }
-
-    private static long longOrDefault(JsonNode node, String field, long defaultValue) {
-        JsonNode value = node.get(field);
-        return value == null || value.isNull() ? defaultValue : value.asLong();
     }
 
     private static long requiredLong(JsonNode node, String field) {

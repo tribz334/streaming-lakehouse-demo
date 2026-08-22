@@ -71,7 +71,7 @@ node(832, 145, 410, 65, "ADS 应用层", ("留存分析  |  归因分析  |  反
 node(832, 245, 410, 78, "DWS 汇总层", ("消耗、GMV、曝光、点击、转化、订单", "CTR、CVR、ROI"))
 node(832, 365, 250, 82, "DWD 明细层", ("清洗、去重、维度补全", "dwd_ad_events_di"))
 node(1112, 365, 130, 82, "DIM 维度层", ("广告主、计划", "单元、创意"), "#f3f4f6")
-node(832, 505, 410, 76, "ODS 原始层", ("ods_ad_events_di",), "#f3f4f6")
+node(832, 505, 410, 76, "ODS 原始层", ("ods_log_inc",), "#f3f4f6")
 lines.append('<text x="1037" y="625" text-anchor="middle" class="small">统一 Schema · 主键语义 · Snapshot · Time Travel · Compaction</text>')
 
 node(1325, 155, 210, 88, "Paimon External Catalog", ("目录已接入", "直读受本地版本兼容限制"), dashed=True)

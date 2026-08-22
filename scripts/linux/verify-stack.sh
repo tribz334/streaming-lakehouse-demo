@@ -18,7 +18,6 @@ check_url() {
 }
 
 check_url "Flink" "http://127.0.0.1:8082/jobs"
-curl -fsS "http://127.0.0.1:8082/jobs/overview" | grep -q '"name":"mysql-cdc-to-paimon".*"state":"RUNNING"'
 check_url "Prometheus" "http://127.0.0.1:19090/-/ready"
 check_url "Apicurio" "http://127.0.0.1:8081/apis/registry/v3/system/info"
 check_url "Superset" "http://127.0.0.1:8088/health"

@@ -27,7 +27,7 @@
 <body>
   <header>
     <h1>USTC Lakehouse Workflow Dashboard</h1>
-    <div>Generated at 2026-07-23 06:21:02. This is the local runnable scheduler fallback for DolphinScheduler.</div>
+    <div>Generated at 2026-08-22 07:14:05. This is the local runnable scheduler fallback for DolphinScheduler.</div>
   </header>
   <main>
     <div class="summary">
@@ -56,17 +56,10 @@ workflows:
     tasks:
       - name: prepare_catalogs
         type: SHELL
-      - name: ods_snapshot_check
-        type: FLINK_SQL_BATCH
-        sql: flink/sql/06_offline_ods_check.sql
-        depends_on: [prepare_catalogs]
-      - name: verify_cdc_dimensions
-        type: FLINK_REST
-        depends_on: [prepare_catalogs]
       - name: dws_theme_load
         type: FLINK_SQL_BATCH
         sql: flink/sql/08_offline_dws.sql
-        depends_on: [ods_snapshot_check, verify_cdc_dimensions]
+        depends_on: [prepare_catalogs]
       - name: dm_layer_load
         type: FLINK_SQL_BATCH
         sql: flink/sql/09_offline_dm.sql
@@ -74,22 +67,18 @@ workflows:
       - name: ads_retention
         type: FLINK_SQL_BATCH
         sql: flink/sql/10_ads_retention.sql
-        depends_on: [ods_snapshot_check, verify_cdc_dimensions]
-      - name: ads_attribution
+        depends_on: [dws_theme_load]
+      - name: ads_order_attribution
         type: FLINK_SQL_BATCH
-        sql: flink/sql/11_ads_attribution.sql
-        depends_on: [dm_layer_load]
-      - name: ads_antifraud
-        type: FLINK_SQL_BATCH
-        sql: flink/sql/12_ads_fraud.sql
-        depends_on: [dm_layer_load]
+        sql: flink/sql/11_ads_order_attribution.sql
+        depends_on: [dws_theme_load]
       - name: ads_creative_offline
         type: FLINK_SQL_BATCH
         sql: flink/sql/13_ads_creative_offline.sql
-        depends_on: [dws_theme_load]
+        depends_on: [dm_layer_load]
       - name: publish_offline_receipt
         type: SHELL
-        depends_on: [ads_retention, ads_attribution, ads_antifraud, ads_creative_offline]
+        depends_on: [ads_retention, ads_order_attribution, ads_creative_offline]
 
   - name: ad_lakehouse_realtime_operations
     description: Manual stop-and-restart workflow for persistent streaming jobs.
@@ -100,17 +89,13 @@ workflows:
       - name: prepare_realtime_resources
         type: SHELL
         depends_on: [stop_existing_stream_jobs]
-      - name: start_mysql_cdc
-        type: FLINK_CDC_PIPELINE
-        yaml: flink-cdc/mysql-to-paimon.yaml
-        depends_on: [prepare_realtime_resources]
       - name: start_realtime_java_job
         type: SHELL
         command: scripts/linux/submit-streaming-jobs.sh
         depends_on: [prepare_realtime_resources]
       - name: verify_realtime_jobs
         type: FLINK_REST
-        depends_on: [start_realtime_java_job, start_mysql_cdc]
+        depends_on: [start_realtime_java_job]
 
   - name: ad_realtime_daily_rollover
     description: Archive completed dates, delete expired 10-second windows, and validate the new business day.

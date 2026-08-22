@@ -54,11 +54,11 @@ public class OrderDetail implements Serializable {
 
     public void finalizeAttribution() {
         if (attributedClickEventId == null) {
-            advertiserId = "organic";
-            campaignId = "organic";
-            unitId = "organic";
-            slotId = "organic";
-            creativeId = "organic";
+            advertiserId = null;
+            campaignId = null;
+            unitId = null;
+            slotId = null;
+            creativeId = null;
             media = "organic";
             commerceScene = "shop";
             attributionStatus = "organic";
@@ -70,7 +70,7 @@ public class OrderDetail implements Serializable {
         event.setEventId(eventId);
         event.setEventTimeMillis(paymentTimeMillis);
         event.setUserId(userId);
-        event.setAdvertiserId("organic".equals(attributionStatus) ? "organic" : advertiserId);
+        event.setAdvertiserId(advertiserId);
         event.setCampaignId(campaignId);
         event.setUnitId(unitId);
         event.setSlotId(slotId);

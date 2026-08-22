@@ -285,12 +285,6 @@ docker exec "$JM" bash -lc "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sq
 docker exec "$JM" bash -lc "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sql/01_model_tables.sql"
 '@
 
-$verifyCdcDimensions = @'
-set -euo pipefail
-overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
-printf '%s' "$overview" | jq -e '.jobs[] | select(.name == "mysql-cdc-to-paimon" and .state == "RUNNING")' >/dev/null
-'@
-
 $offlineReceipt = @'
 set -euo pipefail
 code=$(curl -sS -o /dev/null -w '%{http_code}' http://starrocks:8030/)
@@ -302,30 +296,21 @@ cat /workspace/dolphinscheduler/runs/offline-workflow-execution.txt
 
 $offlineTasks = @(
   (New-TaskSpec "prepare_catalogs" "Initialize Flink/Paimon catalogs and thesis tables" $prepareCatalogs 80 220),
-  (New-TaskSpec "ods_snapshot_check" "Validate the bounded latest ODS Paimon snapshot" (New-BatchSqlCommand "06_offline_ods_check.sql") 300 100),
-  (New-TaskSpec "verify_cdc_dimensions" "Verify that MySQL CDC continuously maintains DIM tables" $verifyCdcDimensions 300 340),
-  (New-TaskSpec "dws_theme_load" "Build the streamlined offline DWS layer" (New-BatchSqlCommand "08_offline_dws.sql") 820 220),
-  (New-TaskSpec "dm_layer_load" "Build attribution and anti-fraud DM features" (New-BatchSqlCommand "09_offline_dm.sql") 1080 340),
+  (New-TaskSpec "dws_theme_load" "Build daily additive creative facts and reusable offline DWS datasets" (New-BatchSqlCommand "08_offline_dws.sql") 820 220),
+  (New-TaskSpec "dm_layer_load" "Build creative, unit, campaign, and advertiser rolling windows" (New-BatchSqlCommand "09_offline_dm.sql") 1080 340),
   (New-TaskSpec "ads_retention" "Calculate advertiser retention ADS" (New-BatchSqlCommand "10_ads_retention.sql") 1320 60),
-  (New-TaskSpec "ads_attribution" "Calculate 30-day last-click attribution ADS" (New-BatchSqlCommand "11_ads_attribution.sql") 1320 220),
-  (New-TaskSpec "ads_antifraud" "Calculate anti-fraud signal ADS" (New-BatchSqlCommand "12_ads_fraud.sql") 1320 420),
+  (New-TaskSpec "ads_order_attribution" "Build 30-day last-click order attribution detail and summary" (New-BatchSqlCommand "11_ads_order_attribution.sql") 1320 340),
   (New-TaskSpec "ads_creative_offline" "Build the creative-grain offline BI serving dataset" (New-BatchSqlCommand "13_ads_creative_offline.sql") 1320 580),
   (New-TaskSpec "publish_offline_receipt" "Confirm StarRocks reachability and write the offline receipt" $offlineReceipt 1820 220)
 )
 $offlineEdges = @(
-  [ordered]@{ from = "prepare_catalogs"; to = "ods_snapshot_check" },
-  [ordered]@{ from = "prepare_catalogs"; to = "verify_cdc_dimensions" },
-  [ordered]@{ from = "ods_snapshot_check"; to = "dws_theme_load" },
-  [ordered]@{ from = "verify_cdc_dimensions"; to = "dws_theme_load" },
+  [ordered]@{ from = "prepare_catalogs"; to = "dws_theme_load" },
   [ordered]@{ from = "dws_theme_load"; to = "dm_layer_load" },
-  [ordered]@{ from = "ods_snapshot_check"; to = "ads_retention" },
-  [ordered]@{ from = "verify_cdc_dimensions"; to = "ads_retention" },
-  [ordered]@{ from = "dm_layer_load"; to = "ads_attribution" },
-  [ordered]@{ from = "dm_layer_load"; to = "ads_antifraud" },
-  [ordered]@{ from = "dws_theme_load"; to = "ads_creative_offline" },
+  [ordered]@{ from = "dws_theme_load"; to = "ads_retention" },
+  [ordered]@{ from = "dws_theme_load"; to = "ads_order_attribution" },
+  [ordered]@{ from = "dm_layer_load"; to = "ads_creative_offline" },
   [ordered]@{ from = "ads_retention"; to = "publish_offline_receipt" },
-  [ordered]@{ from = "ads_attribution"; to = "publish_offline_receipt" },
-  [ordered]@{ from = "ads_antifraud"; to = "publish_offline_receipt" },
+  [ordered]@{ from = "ads_order_attribution"; to = "publish_offline_receipt" },
   [ordered]@{ from = "ads_creative_offline"; to = "publish_offline_receipt" }
 )
 
@@ -344,11 +329,13 @@ set -euo pipefail
 sleep 10
 overview=$(curl -fsS http://flink-jobmanager:8081/jobs/overview)
 java_running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and .name == "DwsAdMetric")] | length')
-cdc_running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and .name == "mysql-cdc-to-paimon")] | length')
+adfacts_running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and .name == "ods-log-and-dwd-ad-facts")] | length')
+lifecycle_running=$(printf '%s' "$overview" | jq '[.jobs[] | select(.state == "RUNNING" and .name == "dwd-order-lifecycle-acc")] | length')
 test "$java_running" -eq 1
-test "$cdc_running" -eq 1
+test "$adfacts_running" -eq 1
+test "$lifecycle_running" -eq 1
 mkdir -p /workspace/dolphinscheduler/runs
-printf 'realtime workflow completed at %s; java_metric_jobs=%s; cdc_jobs=%s\n' "$(date -Iseconds)" "$java_running" "$cdc_running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
+printf 'realtime workflow completed at %s; java_metric_jobs=%s; ad_fact_jobs=%s; lifecycle_jobs=%s\n' "$(date -Iseconds)" "$java_running" "$adfacts_running" "$lifecycle_running" > /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
 cat /workspace/dolphinscheduler/runs/realtime-workflow-execution.txt
 '@
 
@@ -365,24 +352,15 @@ cd /workspace/project
 bash scripts/linux/submit-streaming-jobs.sh
 '@
 
-$startMysqlCdc = @'
-set -euo pipefail
-cd /workspace/project
-bash scripts/linux/submit-cdc-pipeline.sh
-'@
-
 $realtimeTasks = @(
   (New-TaskSpec "stop_existing_stream_jobs" "Stop current streaming jobs for release or schema evolution" $stopRealtimeJobs 100 220),
   (New-TaskSpec "prepare_realtime_resources" "Ensure the Kafka ODS topic exists before starting ingestion" $prepareRealtimeResources 320 220),
-  (New-TaskSpec "start_mysql_cdc" "Submit the MySQL-to-Paimon CDC pipeline" $startMysqlCdc 600 100),
   (New-TaskSpec "start_realtime_java_job" "Build and submit the Kafka-to-StarRocks Java Flink job" $startRealtimeJava 600 340),
-  (New-TaskSpec "verify_realtime_jobs" "Verify both CDC and Java metric jobs and write the receipt" $verifyRealtimeJobs 920 220)
+  (New-TaskSpec "verify_realtime_jobs" "Verify Java and Paimon DWD jobs and write the receipt" $verifyRealtimeJobs 920 220)
 )
 $realtimeEdges = @(
   [ordered]@{ from = "stop_existing_stream_jobs"; to = "prepare_realtime_resources" },
-  [ordered]@{ from = "prepare_realtime_resources"; to = "start_mysql_cdc" },
   [ordered]@{ from = "prepare_realtime_resources"; to = "start_realtime_java_job" },
-  [ordered]@{ from = "start_mysql_cdc"; to = "verify_realtime_jobs" },
   [ordered]@{ from = "start_realtime_java_job"; to = "verify_realtime_jobs" }
 )
 
@@ -463,7 +441,7 @@ $dailyRolloverEdges = @(
   [ordered]@{ from = "verify_business_day_rollover"; to = "publish_daily_rollover_receipt" }
 )
 
-$offlineCode = Set-WorkflowDefinition $projectCode $offlineWorkflowName "Daily 02:00 bounded ODS/DIM/DWD/DWS/DM/ADS load" $offlineTasks $offlineEdges "SERIAL_WAIT"
+$offlineCode = Set-WorkflowDefinition $projectCode $offlineWorkflowName "Daily 02:00 DWS/DM/ADS batch over continuously maintained DIM/DWD" $offlineTasks $offlineEdges "SERIAL_WAIT"
 $realtimeCode = Set-WorkflowDefinition $projectCode $realtimeWorkflowName "Manual stop-and-restart operations for the single Kafka-to-StarRocks Java streaming job" $realtimeTasks $realtimeEdges "SERIAL_WAIT"
 $dailyRolloverCode = Set-WorkflowDefinition $projectCode $dailyRolloverWorkflowName "Daily 00:05 archive, expired-window cleanup, and business-day rollover validation" $dailyRolloverTasks $dailyRolloverEdges "SERIAL_WAIT"
 

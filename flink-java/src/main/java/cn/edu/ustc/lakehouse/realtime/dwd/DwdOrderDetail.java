@@ -17,6 +17,6 @@ public final class DwdOrderDetail {
                 .keyBy(AttributionKey::from)
                 .connect(orderDetailStream.keyBy(AttributionKey::from))
                 .process(new AttributionProcessFunction())
-                .name("DwdOrderDetail: dwd_ad_action_log connect ods_order_info");
+                .name("DwdOrderDetail: dwd_ad_action_log connect mysql_order_info");
     }
 }

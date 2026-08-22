@@ -2,65 +2,51 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ustc.example/schema/ods_log.schema.json",
   "title": "ODS Raw SDK Tracking Report",
-  "description": "Raw client report retained before DWD page/action flattening. bus_id is intentionally omitted.",
+  "description": "Raw client message retained before DWD action flattening.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["app_id", "log_id", "report_id", "common", "actions", "schema_version", "ts"],
+  "required": ["bus_id", "app_id", "log_id", "msg_id", "common", "actions", "ts"],
   "properties": {
+    "bus_id": { "type": "integer", "description": "Business-line id." },
     "app_id": { "type": "integer", "description": "Client/application id." },
     "log_id": { "type": "integer", "description": "Tracking definition id assigned by the tracking platform." },
-    "report_id": { "type": "string", "minLength": 1 },
+    "msg_id": { "type": "integer", "description": "Unique BIGINT id of one SDK message." },
     "common": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["area", "ip", "uid", "device_id", "app_version"],
+      "required": ["area", "ip", "uid", "device_id", "platform", "app_version", "browser_version", "sdk_version"],
       "properties": {
+        "uid": { "type": "integer" },
         "area": { "type": "string" },
         "ip": { "type": "string" },
-        "uid": { "type": "string" },
-        "advertiser_id": { "type": "string", "description": "Optional for advertiser-side clients; normally absent from consumer-side reports." },
-        "device_id": { "type": "string" },
-        "app_version": { "type": "string" }
-      }
-    },
-    "page": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["event_id", "event_type", "page_id", "during_time", "source_type", "ts"],
-      "properties": {
-        "event_id": { "type": "string" },
-        "event_type": { "type": "string", "enum": ["page_view", "page_leave"] },
-        "page_id": { "type": "string" },
-        "last_page_id": { "type": ["string", "null"] },
-        "during_time": { "type": "integer", "minimum": 0 },
-        "source_type": { "type": "string" },
-        "ts": { "type": "integer", "minimum": 0 }
+        "device_id": { "type": "integer" },
+        "platform": { "type": "integer", "enum": [0, 1] },
+        "app_version": { "type": "string" },
+        "browser_version": { "type": "string" },
+        "sdk_version": { "type": "string" }
       }
     },
     "actions": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["event_id", "action", "creative_id", "product_id", "slot_id", "media", "commerce_scene", "traffic_type", "ts"],
+        "required": ["event_id", "action", "creative_id", "product_id", "slot_id", "media", "commerce_scene", "traffic_type", "play_during", "ts"],
         "properties": {
-          "event_id": { "type": "string" },
-          "action": { "type": "string", "enum": ["send", "show", "click", "convert"] },
-          "creative_id": { "type": "string" },
-          "product_id": { "type": "string" },
-          "slot_id": { "type": "string", "description": "Client-observed advertising slot id." },
+          "event_id": { "type": "integer" },
+          "action": { "type": "string", "enum": ["delivery", "impression", "click", "conversion"] },
+          "creative_id": { "type": "integer" },
+          "product_id": { "type": "integer" },
+          "slot_id": { "type": "integer", "description": "Client-observed advertising slot id." },
           "media": { "type": "string" },
-          "commerce_scene": { "type": "string", "enum": ["live", "short_video", "shop", "external"] },
-          "traffic_type": { "type": "string", "enum": ["paid", "organic"] },
+          "commerce_scene": { "type": "string" },
+          "traffic_type": { "type": "string" },
+          "play_during": { "type": "integer", "minimum": 0 },
           "ts": { "type": "integer", "minimum": 0 }
         }
       }
     },
-    "schema_version": { "type": "integer", "const": 10 },
     "ts": { "type": "integer", "minimum": 0, "description": "SDK report time in epoch milliseconds." }
-  },
-  "anyOf": [
-    { "required": ["page"] },
-    { "properties": { "actions": { "minItems": 1 } } }
-  ]
+  }
 }

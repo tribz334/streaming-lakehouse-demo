@@ -57,7 +57,7 @@ box(95, 258, 1030, 48, "ADS 应用层", ("留存分析 | 归因分析 | 反作�
 box(95, 326, 1030, 52, "DWS 汇总层", ("消耗 · GMV · 曝光 · 点击 · 转化 · 订单 · CTR · CVR · ROI",))
 box(95, 402, 650, 70, "DWD 明细层", ("清洗 · 去重 · 维度补全", "dwd_ad_events_di"))
 box(785, 402, 340, 70, "DIM 维度层", ("广告主 · 计划 · 单元 · 创意",))
-box(95, 492, 1030, 38, "ODS 原始层", ("ods_ad_events_di",), gray=True)
+box(95, 492, 1030, 38, "ODS 原始层", ("ods_log_inc",), gray=True)
 
 layer(565, 130, "03  统一计算引擎：Apache Flink")
 box(140, 608, 390, 65, "Flink Streaming", ("实时写入 · 10 秒窗口聚合",))
