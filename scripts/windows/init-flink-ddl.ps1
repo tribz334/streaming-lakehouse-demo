@@ -1,15 +1,10 @@
-$ErrorActionPreference = "Stop"
-$PSNativeCommandUseErrorActionPreference = $false
+$ErrorActionPreference = "Continue"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $root
-
-foreach ($sqlFile in @("00_catalogs_and_tables.sql", "01_model_tables.sql")) {
-  $output = docker compose exec -T flink-jobmanager `
-    /opt/flink/bin/sql-client.sh -f "/opt/flink/usrlib/sql/$sqlFile" 2>&1
-  $output
-  if ($LASTEXITCODE -ne 0 -or $output -match "\[ERROR\]") {
-    throw "Flink DDL initialization failed: $sqlFile"
-  }
-}
-
-Write-Host "Flink sources, demo tables, and thesis Appendix A warehouse tables created."
+$output = docker compose exec -T flink-jobmanager /opt/flink/bin/sql-client.sh `
+  -f "/opt/flink/usrlib/sql/00_bootstrap.sql" 2>&1
+$output
+if ($LASTEXITCODE -ne 0 -or ($output | Out-String) -match "\[ERROR\]") { throw "Fluss/Paimon table bootstrap failed" }
+docker compose exec -T -u 0 flink-jobmanager chown -R flink:flink /warehouse
+if ($LASTEXITCODE -ne 0) { throw "Warehouse ownership normalization failed" }
+Write-Host "Fluss hot tables and native Paimon offline tables are ready."

@@ -1,31 +1,16 @@
-ARG FLINK_BASE_IMAGE=flink:2.2.0-scala_2.12-java17
+ARG FLINK_BASE_IMAGE=flink:1.20.3-scala_2.12-java17
 FROM ${FLINK_BASE_IMAGE}
 
-ARG PAIMON_VERSION=1.4.2
-ARG FLINK_KAFKA_CONNECTOR_VERSION=5.0.0-2.2
-ARG FLINK_CDC_VERSION=3.6.0-2.2
-ARG MYSQL_CONNECTOR_VERSION=9.3.0
-
 USER root
-COPY lib/paimon-flink-2.2.jar /opt/flink/lib/paimon-flink-2.2.jar
-COPY lib/hive-apache-1.2.2-2.jar /opt/flink/lib/hive-apache.jar
-COPY lib/libthrift-0.9.3.jar /opt/flink/lib/libthrift.jar
-COPY lib/flink-sql-connector-kafka-5.0.0-2.2.jar /opt/flink/lib/flink-sql-connector-kafka.jar
-COPY lib/flink-sql-connector-mysql-cdc-3.6.0-2.2.jar /opt/flink/lib/flink-sql-connector-mysql-cdc.jar
+COPY lib/paimon-flink-1.20.jar /opt/flink/lib/paimon-flink-1.20.jar
+COPY lib/fluss-flink-1.20.jar /opt/flink/lib/fluss-flink-1.20.jar
+COPY lib/fluss-flink-tiering.jar /opt/flink/opt/fluss-flink-tiering.jar
+COPY lib/fluss-lake-paimon.jar /opt/flink/lib/fluss-lake-paimon.jar
+COPY lib/flink-sql-connector-mysql-cdc-3.6.0-1.20.jar /opt/flink/lib/flink-sql-connector-mysql-cdc.jar
 COPY lib/mysql-connector-j.jar /opt/flink/lib/mysql-connector-j.jar
-COPY lib/flink-connector-jdbc-core.jar /opt/flink/lib/flink-connector-jdbc-core.jar
-COPY lib/flink-connector-jdbc-mysql.jar /opt/flink/lib/flink-connector-jdbc-mysql.jar
-COPY lib/flink-shaded-hadoop-2-uber.jar /opt/flink/lib/flink-shaded-hadoop-2-uber.jar
-COPY lib/flink-cdc-3.6.0-2.2-bin.tar.gz /tmp/flink-cdc.tar.gz
-RUN tar -xzf /tmp/flink-cdc.tar.gz -C /opt \
-    && mv /opt/flink-cdc-3.6.0-2.2 /opt/flink-cdc \
-    && cp /opt/flink-cdc/lib/flink-cdc-dist-3.6.0-2.2.jar /opt/flink/lib/flink-cdc-dist.jar \
-    && rm /tmp/flink-cdc.tar.gz
-COPY lib/flink-cdc-pipeline-connector-mysql-3.6.0-2.2.jar /opt/flink-cdc/lib/flink-cdc-pipeline-connector-mysql.jar
-COPY lib/flink-cdc-pipeline-connector-paimon-3.6.0-2.2.jar /opt/flink-cdc/lib/flink-cdc-pipeline-connector-paimon.jar
-COPY lib/flink-cdc-pipeline-connector-mysql-3.6.0-2.2.jar /opt/flink/lib/flink-cdc-pipeline-connector-mysql.jar
-COPY lib/flink-cdc-pipeline-connector-paimon-3.6.0-2.2.jar /opt/flink/lib/flink-cdc-pipeline-connector-paimon.jar
-
-RUN mkdir -p /warehouse/paimon /opt/flink/usrlib/sql /opt/flink-cdc/pipelines \
-    && chown -R flink:flink /warehouse /opt/flink/usrlib /opt/flink-cdc
+COPY lib/flink-connector-starrocks.jar /opt/flink/lib/flink-connector-starrocks.jar
+COPY lib/hadoop-client-api.jar /opt/flink/lib/hadoop-client-api.jar
+COPY lib/hadoop-client-runtime.jar /opt/flink/lib/hadoop-client-runtime.jar
+RUN mkdir -p /warehouse/fluss /warehouse/paimon /warehouse/checkpoints /opt/flink/usrlib/sql \
+    && chown -R flink:flink /warehouse /opt/flink/usrlib
 USER flink

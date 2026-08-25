@@ -1,52 +1,15 @@
-# 论文功能实现验收表
+# Implementation audit
 
-验收依据：论文第 3 章需求分析、第 4 章系统架构设计、第 5 章系统实现与测试。
-
-## 已实现并可运行
-
-| 论文能力 | 当前实现 | 证据 |
+| Requirement | Implementation | Evidence |
 | --- | --- | --- |
-| Kafka 埋点事件接入 | 事件生成器持续写入 `ods_log` | `generator/produce_events.py`、Kafka 容器 |
-| MySQL 业务数据源 | 广告主、广告组、广告计划、创意、用户、商品、店铺、订单明细 `order_detail` 与广告消耗明细 `bill_detail` | `mysql/init`、MySQL 容器 |
-| MySQL 业务数据接入 | Flink CDC 直接监听 Binlog：主数据进入 DIM，订单和计费进入 DWD，无数据库 ODS 中间表 | `05_mysql_cdc_direct_to_dim.sql`、`02_dwd_order_lifecycle.sql`、`04_dwd_ad_facts_to_paimon.sql` |
-| Paimon 湖仓分层 | 保存 ODS/DWD/DIM 及离线 DWS/DM/ADS，支持批量回溯与主题加工 | `00_catalogs_and_tables.sql`、`01_model_tables.sql` |
-| 单机精简拓扑 | 1 Kafka Broker、1 Flink TM、1 采集实例，可选 1 StarRocks FE + 1 BE | `docker-compose.yml` |
-| Flink 流批处理 | 一个 Java 流任务处理实时短窗口，SQL 批任务刷新离线 DWS/DM/ADS | `flink-java`、`scripts/windows/*.ps1`、`scripts/linux/*.sh` |
-| 订单生命周期 | 七个关键时间节点；Paimon动态桶全局主键把未闭环订单从 `9999-12-31` 迁移到真实终止日分区 | `dwd_order_detail_acc`、`02_dwd_order_lifecycle.sql` |
-| 核心广告指标 | Java Flink 作业完成 10 秒窗口聚合；大盘按天累计展示总消耗、内循环 GMV，并按“内循环 GMV / 内循环消耗”计算 ROAS | `flink-java`、`realtime_ad_metrics_10s`、`bootstrap_dashboard.py` |
-| 离线核心指标大盘 | 每日封存 ADS、与实时一致的内循环口径、可配置统计时间范围和日趋势 | `realtime_ad_metrics_daily`、`v_offline_core_metrics`、`bootstrap_offline_dashboard.py` |
-| 广告主留存 | 次日、7 日、15 日、30 日留存口径 | `10_ads_retention.sql` |
-| Schema Registry | Apicurio JSON Schema 注册与查询 | `register-schemas.ps1` |
-| StarRocks OLAP | 实时指标由 Flink JDBC Sink 直接 UPSERT；离线 ADS 使用快照 | `StarRocksMetricSink.java`、`init_starrocks.sql`、`sync-starrocks-olap.ps1` |
-| Superset 接入 | 注册实时、离线、留存、归因和反作弊数据集并自动生成专题看板 | `superset/bootstrap_datasets.py`、`superset/bootstrap_*dashboard.py` |
-| Prometheus | Flink 指标采集和 targets API | `prometheus/prometheus.yml` |
-| Hive Metastore | Paimon Flink SQL Catalog 使用 HMS 元数据后端 | `docker-compose.yml`、`00_catalogs_and_tables.sql` |
-| 元数据与血缘导出 | DataHub 风格 JSON 和 MCP-style JSONL | `datahub/metadata`、`datahub/mcp` |
-| 本地工作流 | 批刷新、同步、治理、验证和运行历史 | `scripts/windows/init-flink-ddl.ps1`、`run-ads-batches.ps1`、`sync-starrocks-olap.ps1` |
+| 日志直写 ODS | SDK JSON 顶层拆为元数据、`common`、`events` 后直接追加到 Fluss `ods_log_di`，不经过 MySQL；校验后续接入 | `generator/produce_events.py`, `flink/sql/00_bootstrap.sql` |
+| Fluss 秒级热层 | ODS、7 张宽维、行为/账单/订单 DWD；按天物理分区并保留小时字段 | `flink/sql/00_bootstrap.sql` |
+| Paimon 落盘 | 所有 Fluss 热表开启 lake，Tiering freshness 30 秒 | `flink/sql/00_bootstrap.sql`, `scripts/*/submit-streaming-jobs.*` |
+| 实时广告 GMV | 6 小时 `uid + product_id` Last Click 直接归因，30 秒窗口写 Fluss | `flink/sql/02c_direct_order_attribution.sql`、`flink/sql/03_realtime_order_dws.sql` |
+| 一天一个离线单位 | 单日覆盖 advertiser/unit/creative 三张 DWS，并滚动生成 1/7/30/累计 DM 快照 | `flink/sql/10_daily_offline.sql`, `scripts/*/run-daily-batch.*` |
+| DBeaver 可见 | StarRocks `ad_ads` 物理表/视图以及 `paimon_catalog.ad_dw` 外部湖表 | `starrocks/init_starrocks.sql` |
+| 删除冗余 | 维度 CDC 直接写 DIM，仅日志、账单、订单保留 ODS；旧 Kafka、Java、HMS 和重复链路已移除 | repository tree |
 
-## 部分实现或采用本地替代
+历史验证（2026-08-22）基于旧日志 CDC 链路；改为 Fluss 直写后的运行验证需重新执行。当前目标常驻作业为 Tiering、业务库 CDC、ODS-to-DWD 和实时 ADS 共 4 个。
 
-| 论文能力 | 当前差异 |
-| --- | --- |
-| HDFS + Hive Metastore | Hive Metastore 已接入 Paimon 主链路；数据文件仍使用 Docker volume 文件系统，不是 HDFS。 |
-| StarRocks External Catalog 直读 Paimon | Catalog 兼容性仍受版本限制；实时服务使用 Flink JDBC 直写，离线 ADS 使用内部快照。 |
-| Superset BI 应用 | 已生成实时、离线、留存、广告归因和广告反作弊五类独立看板；订阅告警和面向终端用户的独立 BI 门户尚未实现。 |
-| DolphinScheduler | 提供 YAML 模板、本地 runner、运行历史和 HTML 看板；不是真实 DolphinScheduler 服务。 |
-| DataHub | 提供资产、血缘、术语离线导出；不是真实 DataHub UI 和自动字段级血缘采集。 |
-| Grafana / Loki | Grafana、Loki 与 Alloy 已接入；Alloy 自动发现本项目 Docker 容器并集中采集日志，Grafana Loki 数据源已实测健康。 |
-
-## 物理环境限制
-
-- 单机三逻辑节点不能证明跨物理机网络开销、机架故障隔离或论文中的硬件吞吐结果。
-- YARN real-time/offline/routine/ad-hoc 队列仍以 Compose profile 和作业类型模拟，未部署真实 YARN Capacity Scheduler。
-- Flink、Kafka、HDFS、StarRocks 的高可用、多副本和节点故障自动恢复演练。
-- DataHub 字段级血缘、负责人维护和影响分析 UI。
-- Kerberos、Ranger、字段级访问控制、敏感字段脱敏。
-- DolphinScheduler 失败重试、依赖调度和告警通知实测。
-- Grafana 告警和 node_exporter 主机监控实测。
-- 论文描述的亿级数据、1/2/4 并行度吞吐、端到端时延、查询响应和五轮平均性能测试。
-- 完整的 Superset 仪表板、图表和报表订阅。
-
-## 结论
-
-当前项目是可运行的单机 Streaming Lakehouse 论文演示版，并增加了归因和反作弊能力；它不是论文中三节点生产级系统的 100% 等价实现。核心业务数据链路可演示，生产级分布式、治理、安全、运维和性能实验仍需继续建设。
+当前 Docker Compose 是单 Coordinator、单 Tablet、单 Flink TaskManager、单 StarRocks FE/BE 的本地演示拓扑。生产部署仍需多副本、对象存储、独立 checkpoint、凭据管理、资源隔离和告警。

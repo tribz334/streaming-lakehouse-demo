@@ -1,383 +1,137 @@
 from superset.app import create_app
 
 
+CLASSIFIED_ORDER_METRICS = [
+    f"{delivery_type}_{metric}"
+    for delivery_type in ("ecommerce", "short_video", "live")
+    for metric in (
+        "pay_order_count", "refund_order_count",
+        "pay_order_gmv", "refund_order_gmv",
+    )
+]
+
+ADDITIVE_METRICS = [
+    "delivery_count", "impression_count", "click_count", "conversion_count",
+    "cost", "closed_cost", "pay_order_count", "refund_order_count",
+    "pay_order_gmv", "refund_order_gmv",
+] + CLASSIFIED_ORDER_METRICS
+
+
+def topic_columns(entity):
+    return [
+        ("dt", "DATE", True, True, True),
+        (f"{entity}_id", "BIGINT", False, True, True),
+        (f"{entity}_name", "VARCHAR", False, True, True),
+    ] + [(name, "BIGINT", False, False, False) for name in ADDITIVE_METRICS]
+
+
+TOPIC_METRICS = (
+    [("count", "COUNT(*)")]
+    + [(f"total_{name}", f"SUM({name})") for name in ADDITIVE_METRICS]
+    + [
+        ("ctr", "SUM(click_count)/NULLIF(SUM(impression_count),0)"),
+        ("cvr", "SUM(conversion_count)/NULLIF(SUM(click_count),0)"),
+        ("roas", "SUM(pay_order_gmv)/NULLIF(SUM(closed_cost),0)"),
+    ]
+)
+
+
 DATASETS = {
-    "v_dwd_ad_events_detail": {
-        "schema": "ad_ads",
-        "main_dttm_col": "event_ts",
-        "columns": [
-            ("event_date", "VARCHAR", False, True, True),
-            ("event_id", "BIGINT", False, True, True),
-            ("event_ts", "DATETIME", True, True, True),
-            ("advertiser_id", "BIGINT", False, True, True),
-            ("advertiser_name", "VARCHAR", False, True, True),
-            ("industry", "VARCHAR", False, True, True),
-            ("tier", "VARCHAR", False, True, True),
-            ("campaign_id", "BIGINT", False, True, True),
-            ("campaign_name", "VARCHAR", False, True, True),
-            ("unit_id", "BIGINT", False, True, True),
-            ("creative_id", "BIGINT", False, True, True),
-            ("creative_name", "VARCHAR", False, True, True),
-            ("media", "VARCHAR", False, True, True),
-            ("region", "VARCHAR", False, True, True),
-            ("user_id", "BIGINT", False, True, True),
-            ("event_type", "VARCHAR", False, True, True),
-            ("spend", "DECIMAL", False, False, False),
-            ("gmv", "DECIMAL", False, False, False),
-            ("order_id", "BIGINT", False, True, True),
-            ("loaded_at", "DATETIME", True, False, True),
-        ],
-        "metrics": [
-            ("count", "COUNT(*)"),
-            ("total_spend", "SUM(spend)"),
-            ("total_gmv", "SUM(gmv)"),
-            ("impression_events", "SUM(CASE WHEN event_type = 'impression' THEN 1 ELSE 0 END)"),
-            ("click_events", "SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END)"),
-            ("conversion_events", "SUM(CASE WHEN event_type = 'conversion' THEN 1 ELSE 0 END)"),
-        ],
-    },
-    "v_realtime_ad_metrics": {
-        "schema": "ad_ads",
+    f"v_dws_{entity}_di": {
+        "main_dttm_col": "dt",
+        "columns": topic_columns(entity),
+        "metrics": TOPIC_METRICS,
+    }
+    for entity in ("advertiser", "unit", "creative")
+}
+
+DATASETS.update({
+    "v_realtime_metric": {
         "main_dttm_col": "window_start",
         "columns": [
             ("window_start", "DATETIME", True, True, True),
-            ("window_start_local", "DATETIME", True, True, True),
             ("window_end", "DATETIME", True, True, True),
+            ("dt", "DATE", True, True, True),
             ("advertiser_id", "BIGINT", False, True, True),
             ("campaign_id", "BIGINT", False, True, True),
             ("unit_id", "BIGINT", False, True, True),
             ("creative_id", "BIGINT", False, True, True),
-            ("media", "VARCHAR", False, True, True),
-            ("commerce_scene", "VARCHAR", False, True, True),
-            ("commerce_scene_name", "VARCHAR", False, True, True),
-            ("loop_type", "VARCHAR", False, True, True),
-            ("spend", "DECIMAL", False, False, False),
-            ("order_gmv", "DECIMAL", False, False, False),
-            ("attributed_gmv", "DECIMAL", False, False, False),
-            ("organic_gmv", "DECIMAL", False, False, False),
-            ("gmv", "DECIMAL", False, False, False),
-            ("impressions", "BIGINT", False, False, False),
-            ("clicks", "BIGINT", False, False, False),
-            ("paid_orders", "BIGINT", False, False, False),
-            ("attributed_orders", "BIGINT", False, False, False),
-            ("organic_orders", "BIGINT", False, False, False),
-            ("conversions", "BIGINT", False, False, False),
-            ("orders", "BIGINT", False, False, False),
-            ("ctr", "DECIMAL", False, False, False),
-            ("cvr", "DECIMAL", False, False, False),
-            ("roas", "DECIMAL", False, False, False),
-            ("previous_spend", "DECIMAL", False, False, False),
-            ("previous_gmv", "DECIMAL", False, False, False),
-            ("spend_change", "DECIMAL", False, False, False),
-            ("gmv_change", "DECIMAL", False, False, False),
-            ("spend_change_rate", "DECIMAL", False, False, False),
-            ("gmv_change_rate", "DECIMAL", False, False, False),
-            ("updated_at", "DATETIME", True, False, True),
-        ],
-        "metrics": [
-            ("count", "COUNT(*)"),
-            ("total_spend", "SUM(spend)"),
-            ("广告消耗", "SUM(spend)"),
-            ("closed_loop_spend", "SUM(CASE WHEN attributed_gmv > 0 THEN spend ELSE 0 END)"),
-            ("total_order_gmv", "SUM(order_gmv)"),
-            ("total_attributed_gmv", "SUM(attributed_gmv)"),
-            ("inner_loop_gmv", "SUM(CASE WHEN loop_type = '内循环' THEN attributed_gmv ELSE 0 END)"),
-            ("内循环GMV", "SUM(CASE WHEN loop_type = '内循环' THEN attributed_gmv ELSE 0 END)"),
-            ("inner_loop_spend", "SUM(CASE WHEN loop_type = '内循环' THEN spend ELSE 0 END)"),
-            ("广告GMV", "SUM(attributed_gmv)"),
-            ("归因成交金额", "SUM(attributed_gmv)"),
-            ("total_organic_gmv", "SUM(organic_gmv)"),
-            ("total_gmv", "SUM(attributed_gmv)"),
-            ("live_attributed_gmv", "SUM(CASE WHEN commerce_scene = 'live' THEN attributed_gmv ELSE 0 END)"),
-            ("short_video_attributed_gmv", "SUM(CASE WHEN commerce_scene = 'short_video' THEN attributed_gmv ELSE 0 END)"),
-            ("shop_attributed_gmv", "SUM(CASE WHEN commerce_scene = 'shop' THEN attributed_gmv ELSE 0 END)"),
-            ("total_impressions", "SUM(impressions)"),
-            ("total_clicks", "SUM(clicks)"),
-            ("total_conversions", "SUM(paid_orders)"),
-            ("total_orders", "SUM(paid_orders)"),
-            ("total_attributed_orders", "SUM(attributed_orders)"),
-            ("total_organic_orders", "SUM(organic_orders)"),
-            ("ctr", "SUM(clicks) / NULLIF(SUM(impressions), 0)"),
-            ("cvr", "SUM(paid_orders) / NULLIF(SUM(clicks), 0)"),
-            ("roas", "SUM(attributed_gmv) / NULLIF(SUM(spend), 0)"),
-            ("inner_loop_roas", "SUM(CASE WHEN loop_type = '内循环' THEN attributed_gmv ELSE 0 END) / NULLIF(SUM(CASE WHEN loop_type = '内循环' THEN spend ELSE 0 END), 0)"),
-            ("spend_change", "SUM(spend_change)"),
-            ("gmv_change", "SUM(gmv_change)"),
-        ],
+        ] + [(name, "BIGINT", False, False, False) for name in ADDITIVE_METRICS],
+        "metrics": TOPIC_METRICS,
     },
-    "v_advertiser_retention": {
-        "schema": "ad_ads",
-        "main_dttm_col": "cohort_date",
+    "v_offline_metric": {
+        "main_dttm_col": "dt",
         "columns": [
-            ("cohort_date", "DATE", True, True, True),
-            ("cohort_size", "BIGINT", False, False, False),
-            ("retained_1d", "BIGINT", False, False, False),
-            ("retained_7d", "BIGINT", False, False, False),
-            ("retained_15d", "BIGINT", False, False, False),
-            ("retained_30d", "BIGINT", False, False, False),
-            ("rate_1d", "DECIMAL", False, False, False),
-            ("rate_7d", "DECIMAL", False, False, False),
-            ("rate_15d", "DECIMAL", False, False, False),
-            ("rate_30d", "DECIMAL", False, False, False),
-            ("updated_at", "DATETIME", True, False, True),
-        ],
-        "metrics": [
-            ("count", "COUNT(*)"),
-            ("cohort_size", "SUM(cohort_size)"),
-            ("retained_1d", "SUM(retained_1d)"),
-            ("retained_7d", "SUM(retained_7d)"),
-            ("次日留存率", "AVG(rate_1d)"),
-            ("7日留存率", "AVG(rate_7d)"),
-            ("15日留存率", "AVG(rate_15d)"),
-            ("30日留存率", "AVG(rate_30d)"),
-        ],
-    },
-    "v_attribution_summary": {
-        "schema": "ad_ads",
-        "main_dttm_col": "event_date",
-        "columns": [
-            ("event_date", "DATE", True, True, True),
+            ("dt", "DATE", True, True, True),
             ("advertiser_id", "BIGINT", False, True, True),
-            ("advertiser_name", "VARCHAR", False, True, True),
             ("campaign_id", "BIGINT", False, True, True),
-            ("campaign_name", "VARCHAR", False, True, True),
-            ("attribution_period", "VARCHAR", False, True, True),
-            ("conversions", "BIGINT", False, False, False),
-            ("orders", "BIGINT", False, False, False),
-            ("attributed_gmv", "DECIMAL", False, False, False),
-            ("attributed_spend", "DECIMAL", False, False, False),
-            ("updated_at", "DATETIME", True, False, True),
-        ],
-        "metrics": [
-            ("count", "COUNT(*)"),
-            ("total_conversions", "SUM(conversions)"),
-            ("total_orders", "SUM(orders)"),
-            ("total_order_gmv", "SUM(attributed_gmv)"),
-            ("attributed_gmv", "SUM(CASE WHEN attribution_period <> '自然订单' THEN attributed_gmv ELSE 0 END)"),
-            ("direct_gmv", "SUM(CASE WHEN attribution_period = '30分钟直接归因' THEN attributed_gmv ELSE 0 END)"),
-            ("indirect_gmv", "SUM(CASE WHEN attribution_period LIKE '%间接归因' THEN attributed_gmv ELSE 0 END)"),
-            ("organic_gmv", "SUM(CASE WHEN attribution_period = '自然订单' THEN attributed_gmv ELSE 0 END)"),
-            ("attributed_orders", "SUM(CASE WHEN attribution_period <> '自然订单' THEN orders ELSE 0 END)"),
-            ("attributed_order_rate", "SUM(CASE WHEN attribution_period <> '自然订单' THEN orders ELSE 0 END) / NULLIF(SUM(orders), 0)"),
-            ("attributed_gmv_rate", "SUM(CASE WHEN attribution_period <> '自然订单' THEN attributed_gmv ELSE 0 END) / NULLIF(SUM(attributed_gmv), 0)"),
-            ("attributed_spend", "SUM(attributed_spend)"),
-        ],
-    },
-    "v_order_attribution_detail": {
-        "schema": "ad_ads",
-        "main_dttm_col": "order_ts",
-        "columns": [
-            ("event_date", "VARCHAR", False, True, True),
-            ("order_event_id", "BIGINT", False, True, True),
-            ("order_id", "BIGINT", False, True, True),
-            ("order_ts", "DATETIME", True, True, True),
-            ("user_id", "BIGINT", False, True, True),
-            ("order_advertiser_id", "BIGINT", False, True, True),
-            ("order_advertiser_name", "VARCHAR", False, True, True),
-            ("order_campaign_id", "BIGINT", False, True, True),
-            ("order_campaign_name", "VARCHAR", False, True, True),
-            ("order_gmv", "DECIMAL", False, False, False),
-            ("click_event_id", "BIGINT", False, True, True),
-            ("click_ts", "DATETIME", True, True, True),
-            ("creative_id", "BIGINT", False, True, True),
-            ("campaign_id", "BIGINT", False, True, True),
-            ("campaign_name", "VARCHAR", False, True, True),
-            ("advertiser_id", "BIGINT", False, True, True),
-            ("advertiser_name", "VARCHAR", False, True, True),
-            ("touch_spend", "DECIMAL", False, False, False),
-            ("attribution_model", "VARCHAR", False, True, True),
-            ("attribution_type", "VARCHAR", False, True, True),
-            ("attribution_period", "VARCHAR", False, True, True),
-            ("attribution_sort", "INT", False, True, True),
-            ("lag_minutes", "BIGINT", False, False, False),
-            ("is_attributed", "BOOLEAN", False, True, True),
-            ("updated_at", "DATETIME", True, False, True),
-        ],
-        "metrics": [
-            ("order_count", "COUNT(*)"),
-            ("order_gmv", "SUM(order_gmv)"),
-            ("avg_lag_minutes", "AVG(lag_minutes)"),
-        ],
-    },
-    "v_creative_offline_metrics": {
-        "schema": "ad_ads",
-        "main_dttm_col": "stat_date",
-        "columns": [
-            ("stat_date", "DATE", True, True, True),
-            ("creative_id", "BIGINT", False, True, True),
-            ("creative_name", "VARCHAR", False, True, True),
-            ("campaign_id", "BIGINT", False, True, True),
-            ("campaign_name", "VARCHAR", False, True, True),
-            ("campaign_objective", "VARCHAR", False, True, True),
-            ("campaign_budget", "DECIMAL", False, False, False),
-            ("campaign_status", "VARCHAR", False, True, True),
-            ("advertiser_id", "BIGINT", False, True, True),
-            ("advertiser_name", "VARCHAR", False, True, True),
-            ("industry", "VARCHAR", False, True, True),
-            ("advertiser_tier", "VARCHAR", False, True, True),
             ("unit_id", "BIGINT", False, True, True),
-            ("unit_name", "VARCHAR", False, True, True),
-            ("bid_type", "VARCHAR", False, True, True),
-            ("bid_amount", "DECIMAL", False, False, False),
-            ("impressions", "BIGINT", False, False, False),
-            ("clicks", "BIGINT", False, False, False),
-            ("conversions", "BIGINT", False, False, False),
-            ("orders", "BIGINT", False, False, False),
-            ("cost", "DECIMAL", False, False, False),
-            ("gmv", "DECIMAL", False, False, False),
-            ("ctr", "DECIMAL", False, False, False),
-            ("cvr", "DECIMAL", False, False, False),
-            ("cpc", "DECIMAL", False, False, False),
-            ("cpa", "DECIMAL", False, False, False),
-            ("roas", "DECIMAL", False, False, False),
-            ("is_latest_partition", "BOOLEAN", False, True, True),
-            ("updated_at", "DATETIME", True, False, True),
-        ],
-        "metrics": [
-            ("count", "COUNT(*)"),
-            ("row_count", "COUNT(*)"),
-            ("active_creatives", "COUNT(DISTINCT creative_id)"),
-            ("total_cost", "SUM(cost)"),
-            ("total_gmv", "SUM(gmv)"),
-            ("total_impressions", "SUM(impressions)"),
-            ("total_clicks", "SUM(clicks)"),
-            ("total_conversions", "SUM(conversions)"),
-            ("total_orders", "SUM(orders)"),
-            ("ctr", "SUM(clicks) / NULLIF(SUM(impressions), 0)"),
-            ("cvr", "SUM(conversions) / NULLIF(SUM(clicks), 0)"),
-            ("roas", "SUM(gmv) / NULLIF(SUM(cost), 0)"),
-            ("cpc", "SUM(cost) / NULLIF(SUM(clicks), 0)"),
-            ("cpa", "SUM(cost) / NULLIF(SUM(conversions), 0)"),
-            ("latest_cost", "SUM(CASE WHEN is_latest_partition THEN cost ELSE 0 END)"),
-            ("latest_gmv", "SUM(CASE WHEN is_latest_partition THEN gmv ELSE 0 END)"),
-            ("latest_impressions", "SUM(CASE WHEN is_latest_partition THEN impressions ELSE 0 END)"),
-            ("latest_clicks", "SUM(CASE WHEN is_latest_partition THEN clicks ELSE 0 END)"),
-            ("latest_conversions", "SUM(CASE WHEN is_latest_partition THEN conversions ELSE 0 END)"),
-            ("latest_orders", "SUM(CASE WHEN is_latest_partition THEN orders ELSE 0 END)"),
-            ("latest_roas", "SUM(CASE WHEN is_latest_partition THEN gmv ELSE 0 END) / NULLIF(SUM(CASE WHEN is_latest_partition THEN cost ELSE 0 END), 0)"),
-            ("latest_ctr", "SUM(CASE WHEN is_latest_partition THEN clicks ELSE 0 END) / NULLIF(SUM(CASE WHEN is_latest_partition THEN impressions ELSE 0 END), 0)"),
-            ("latest_cvr", "SUM(CASE WHEN is_latest_partition THEN conversions ELSE 0 END) / NULLIF(SUM(CASE WHEN is_latest_partition THEN clicks ELSE 0 END), 0)"),
-        ],
+            ("creative_id", "BIGINT", False, True, True),
+        ] + [(name, "BIGINT", False, False, False) for name in ADDITIVE_METRICS],
+        "metrics": TOPIC_METRICS,
     },
-    "v_offline_core_metrics": {
-        "schema": "ad_ads",
-        "main_dttm_col": "stat_date",
+    "v_order_attribution": {
+        "main_dttm_col": "dt",
         "columns": [
-            ("stat_date", "DATE", True, True, True),
-            ("loop_type", "VARCHAR", False, True, True),
-            ("commerce_scene", "VARCHAR", False, True, True),
-            ("commerce_scene_name", "VARCHAR", False, True, True),
-            ("spend", "DECIMAL", False, False, False),
-            ("attributed_gmv", "DECIMAL", False, False, False),
-            ("impressions", "BIGINT", False, False, False),
-            ("clicks", "BIGINT", False, False, False),
-            ("paid_orders", "BIGINT", False, False, False),
-            ("updated_at", "DATETIME", True, False, True),
+            ("dt", "DATE", True, True, True), ("order_id", "BIGINT", False, True, True),
+            ("uid", "BIGINT", False, True, True), ("product_id", "BIGINT", False, True, True),
+            ("pay_time", "DATETIME", True, True, True), ("pay_order_gmv", "BIGINT", False, False, False),
+            ("last_click_time", "DATETIME", True, True, True),
+            ("advertiser_id", "BIGINT", False, True, True), ("campaign_id", "BIGINT", False, True, True),
+            ("unit_id", "BIGINT", False, True, True), ("creative_id", "BIGINT", False, True, True),
+            ("attribute_period", "VARCHAR", False, True, True),
         ],
         "metrics": [
-            ("count", "COUNT(*)"),
-            ("row_count", "COUNT(*)"),
-            ("total_spend", "SUM(spend)"),
-            ("广告消耗", "SUM(spend)"),
-            ("inner_loop_spend", "SUM(CASE WHEN loop_type = '内循环' THEN spend ELSE 0 END)"),
-            ("内循环消耗", "SUM(CASE WHEN loop_type = '内循环' THEN spend ELSE 0 END)"),
-            ("inner_loop_gmv", "SUM(CASE WHEN loop_type = '内循环' THEN attributed_gmv ELSE 0 END)"),
-            ("内循环GMV", "SUM(CASE WHEN loop_type = '内循环' THEN attributed_gmv ELSE 0 END)"),
-            ("short_video_gmv", "SUM(CASE WHEN commerce_scene = 'short_video' THEN attributed_gmv ELSE 0 END)"),
-            ("live_gmv", "SUM(CASE WHEN commerce_scene = 'live' THEN attributed_gmv ELSE 0 END)"),
-            ("shop_gmv", "SUM(CASE WHEN commerce_scene = 'shop' THEN attributed_gmv ELSE 0 END)"),
-            ("inner_loop_roas", "SUM(CASE WHEN loop_type = '内循环' THEN attributed_gmv ELSE 0 END) / NULLIF(SUM(CASE WHEN loop_type = '内循环' THEN spend ELSE 0 END), 0)"),
-            ("total_impressions", "SUM(impressions)"),
-            ("total_clicks", "SUM(clicks)"),
-            ("total_orders", "SUM(paid_orders)"),
-            ("ctr", "SUM(clicks) / NULLIF(SUM(impressions), 0)"),
-            ("cvr", "SUM(paid_orders) / NULLIF(SUM(clicks), 0)"),
+            ("pay_order_count", "COUNT(DISTINCT order_id)"),
+            ("pay_order_gmv", "SUM(pay_order_gmv)"),
         ],
     },
-    "v_fraud_signal_summary": {
-        "schema": "ad_ads",
-        "main_dttm_col": "event_date",
+    "v_ads_advertiser_retention_di": {
+        "main_dttm_col": "dt",
         "columns": [
-            ("event_date", "DATE", True, True, True),
-            ("advertiser_id", "BIGINT", False, True, True),
-            ("advertiser_name", "VARCHAR", False, True, True),
-            ("suspicious_users", "BIGINT", False, False, False),
-            ("suspicious_windows", "BIGINT", False, False, False),
-            ("suspicious_clicks", "BIGINT", False, False, False),
-            ("suspicious_spend", "DECIMAL", False, False, False),
-            ("avg_risk_score", "DECIMAL", False, False, False),
-            ("updated_at", "DATETIME", True, False, True),
+            ("dt", "DATE", True, True, True),
+            ("advertiser_count", "BIGINT", False, False, False),
+            ("retention_rate_1d", "DOUBLE", False, False, False),
+            ("retention_rate_7d", "DOUBLE", False, False, False),
+            ("retention_rate_15d", "DOUBLE", False, False, False),
+            ("retention_rate_30d", "DOUBLE", False, False, False),
         ],
-        "metrics": [
-            ("count", "COUNT(*)"),
-            ("suspicious_users", "SUM(suspicious_users)"),
-            ("suspicious_windows", "SUM(suspicious_windows)"),
-            ("suspicious_clicks", "SUM(suspicious_clicks)"),
-            ("suspicious_spend", "SUM(suspicious_spend)"),
-            ("avg_risk_score", "AVG(avg_risk_score)"),
-        ],
+        "metrics": [("count", "COUNT(*)")],
     },
-}
-
-DATASETS["v_realtime_ad_metrics_latest_10s"] = {
-    "schema": "ad_ads",
-    "main_dttm_col": "window_start",
-    "columns": list(DATASETS["v_realtime_ad_metrics"]["columns"]),
-    "metrics": list(DATASETS["v_realtime_ad_metrics"]["metrics"]),
-}
-
-DATASETS["v_realtime_ad_metrics_today"] = {
-    "schema": "ad_ads",
-    "main_dttm_col": "window_start",
-    "columns": list(DATASETS["v_realtime_ad_metrics"]["columns"]),
-    "metrics": list(DATASETS["v_realtime_ad_metrics"]["metrics"]),
-}
+})
 
 
 def ensure_dataset(database, table_name, spec):
     from superset import db
     from superset.connectors.sqla.models import SqlaTable, SqlMetric, TableColumn
-
-    dataset = (
-        db.session.query(SqlaTable)
-        .filter_by(database_id=database.id, schema=spec["schema"], table_name=table_name)
-        .one_or_none()
-    )
+    dataset = db.session.query(SqlaTable).filter_by(
+        database_id=database.id, schema="ad_ads", table_name=table_name
+    ).one_or_none()
     if dataset is None:
-        dataset = SqlaTable(
-            database_id=database.id,
-            schema=spec["schema"],
-            table_name=table_name,
-            main_dttm_col=spec["main_dttm_col"],
-        )
+        dataset = SqlaTable(database_id=database.id, schema="ad_ads", table_name=table_name)
         db.session.add(dataset)
         db.session.flush()
-    else:
-        dataset.main_dttm_col = spec["main_dttm_col"]
-
-    dataset.columns = []
-    dataset.metrics = []
-    db.session.flush()
-
+    dataset.main_dttm_col = spec["main_dttm_col"]
+    # Update metadata in place so existing chart references and metric IDs stay
+    # valid. Only missing columns/metrics are appended.
+    columns = {column.column_name: column for column in dataset.columns}
     for name, column_type, is_dttm, groupby, filterable in spec["columns"]:
-        dataset.columns.append(
-            TableColumn(
-                column_name=name,
-                type=column_type,
-                is_dttm=is_dttm,
-                groupby=groupby,
-                filterable=filterable,
-            )
-        )
-
+        column = columns.get(name)
+        if column is None:
+            column = TableColumn(column_name=name)
+            dataset.columns.append(column)
+        column.type = column_type
+        column.is_dttm = is_dttm
+        column.groupby = groupby
+        column.filterable = filterable
+    metrics = {metric.metric_name: metric for metric in dataset.metrics}
     for name, expression in spec["metrics"]:
-        dataset.metrics.append(
-            SqlMetric(
-                metric_name=name,
-                expression=expression,
-                metric_type="sql",
-            )
-        )
+        metric = metrics.get(name)
+        if metric is None:
+            metric = SqlMetric(metric_name=name)
+            dataset.metrics.append(metric)
+        metric.expression = expression
+        metric.metric_type = "sql"
 
 
 def main():
@@ -385,12 +139,11 @@ def main():
     with app.app_context():
         from superset import db
         from superset.models.core import Database
-
         database = db.session.query(Database).filter_by(database_name="StarRocks").one()
         for table_name, spec in DATASETS.items():
             ensure_dataset(database, table_name, spec)
         db.session.commit()
-        print(f"Bootstrapped {len(DATASETS)} Superset datasets for StarRocks.")
+        print(f"Bootstrapped {len(DATASETS)} current DWS/ADS datasets.")
 
 
 if __name__ == "__main__":

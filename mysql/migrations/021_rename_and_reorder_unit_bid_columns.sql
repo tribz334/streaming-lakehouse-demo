@@ -1,6 +1,0 @@
-USE ad_ods;
-
-ALTER TABLE unit_info
-  MODIFY COLUMN `出价方式` VARCHAR(32) NOT NULL DEFAULT 'oCPM' AFTER `单日预算`,
-  MODIFY COLUMN `转化目标` VARCHAR(32) NOT NULL DEFAULT '下单' AFTER `出价方式`,
-  CHANGE COLUMN `出价金额` `转化出价` DECIMAL(18,4) NOT NULL AFTER `转化目标`;

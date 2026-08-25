@@ -220,7 +220,7 @@ INSERT INTO unit_seed VALUES
 (390302,3903,'理想长途单元','CPC',5.2000,'running')
 ;
 INSERT INTO unit_info (
-  unit_id, unit_name, campaign_id, status, is_closed, delivery_way,
+  unit_id, unit_name, campaign_id, status, is_closed, delivery_type,
   search_keyword, product_id, landing_page_url, audience, start_date,
   end_date, daily_budget, bid_type, bid, created_at
 )

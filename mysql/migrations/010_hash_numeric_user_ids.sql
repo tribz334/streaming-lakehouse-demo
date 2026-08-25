@@ -1,1 +1,0 @@
--- Retired: user IDs are native BIGINT values and are never hashed.

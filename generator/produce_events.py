@@ -1,17 +1,15 @@
-import json
+import argparse
+import asyncio
 import hashlib
+import json
 import math
 import os
 import random
 import time
 from datetime import datetime, timezone, timedelta
 
+import fluss
 import mysql.connector
-from kafka import KafkaProducer
-
-
-BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka-node-1:9092")
-TOPIC = os.getenv("TOPIC", "ods_log")
 INTERVAL = float(os.getenv("EVENT_INTERVAL_SECONDS", "0.25"))
 NODE_ID = os.getenv("GENERATOR_NODE_ID", "ingest-node-1")
 NODE_NUMBER = int(os.getenv("GENERATOR_NODE_NUMBER", "1")) & 0x3FF
@@ -30,6 +28,14 @@ TZ = timezone(timedelta(hours=8))
 BUS_ID = int(os.getenv("GENERATOR_BUS_ID", "10"))
 APP_ID = int(os.getenv("GENERATOR_APP_ID", "80"))
 AD_LOG_ID = int(os.getenv("GENERATOR_AD_LOG_ID", "1234"))
+FLUSS_BOOTSTRAP_SERVERS = os.getenv("FLUSS_BOOTSTRAP_SERVERS", "fluss-coordinator:9123")
+FLUSS_DATABASE = os.getenv("FLUSS_DATABASE", "ad_dw")
+FLUSS_ODS_TABLE = os.getenv("FLUSS_ODS_TABLE", "ods_log_di")
+FLUSS_LOOP = asyncio.new_event_loop()
+FLUSS_CONNECTION = None
+FLUSS_ADMIN = None
+FLUSS_WRITER = None
+FLUSS_PARTITIONS = set()
 MEDIA = ["douyin", "kuaishou", "bilibili", "xiaohongshu", "toutiao", "weibo"]
 MEDIA_PROFILES = {
     "douyin": (28, 1.10, 1.06, 1.12),
@@ -138,6 +144,35 @@ def mysql_conn():
     )
 
 
+async def open_fluss_writer(config):
+    connection = await fluss.FlussConnection.create(config)
+    table = await connection.get_table(fluss.TablePath(FLUSS_DATABASE, FLUSS_ODS_TABLE))
+    return connection, table.new_append().create_writer()
+
+
+async def wait_for_write(write):
+    await write.wait()
+    await FLUSS_WRITER.flush()
+
+
+async def create_fluss_partition(dt):
+    await FLUSS_ADMIN.create_partition(
+        fluss.TablePath(FLUSS_DATABASE, FLUSS_ODS_TABLE), {"dt": dt}, ignore_if_exists=True
+    )
+
+
+def connect_fluss():
+    """Create one long-lived Fluss append writer for raw ODS logs."""
+    global FLUSS_CONNECTION, FLUSS_ADMIN, FLUSS_WRITER
+    config = fluss.Config()
+    config.bootstrap_servers = FLUSS_BOOTSTRAP_SERVERS
+    config.writer_acks = "all"
+    config.writer_retries = 10
+    config.writer_enable_idempotence = True
+    FLUSS_CONNECTION, FLUSS_WRITER = FLUSS_LOOP.run_until_complete(open_fluss_writer(config))
+    FLUSS_ADMIN = FLUSS_CONNECTION.get_admin()
+
+
 def load_creatives():
     with mysql_conn() as conn:
         cursor = conn.cursor(dictionary=True)
@@ -157,154 +192,6 @@ def load_creatives():
             """
         )
         return cursor.fetchall()
-
-
-def maybe_write_order(event):
-    if event["event_type"] != "order":
-        return
-    with mysql_conn() as conn:
-        cursor = conn.cursor()
-        event_dt = datetime.fromisoformat(event["ts"])
-        event_time = event_dt.replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-        cancel_time = None
-        confirm_time = None
-        refund_time = None
-        refund_finish_time = None
-        finish_time = None
-        order_status = 3
-
-        # Historical demo orders cover all terminal paths. Live orders stay
-        # open so their later CDC transitions can be demonstrated explicitly.
-        if datetime.now(TZ) - event_dt >= timedelta(days=2):
-            lifecycle_bucket = int(event["order_id"]) % 100
-            if lifecycle_bucket < 20:
-                confirm_time = (event_dt + timedelta(hours=2)).replace(tzinfo=None)
-                finish_time = (event_dt + timedelta(days=1)).replace(tzinfo=None)
-                order_status = 7
-            elif lifecycle_bucket < 30:
-                cancel_time = (event_dt + timedelta(minutes=30)).replace(tzinfo=None)
-                order_status = 2
-            elif lifecycle_bucket < 40:
-                confirm_time = (event_dt + timedelta(hours=2)).replace(tzinfo=None)
-                refund_time = (event_dt + timedelta(days=1)).replace(tzinfo=None)
-                refund_finish_time = (event_dt + timedelta(days=2)).replace(tzinfo=None)
-                order_status = 6
-        amount = int(round(float(event["gmv"]) * 100000))
-        payment_method = 1 + int(event["order_id"]) % 2
-        receiver_name = f"收货人{int(event['user_id']) % 10000}"
-        receiver_phone = f"138{int(event['user_id']) % 100000000:08d}"
-        tracking_number = f"SF{event['order_id']}" if order_status >= 4 else None
-        cursor.execute(
-            """
-            INSERT INTO user_info
-              (uid, user_name, gender, phone_hash, email, user_level, birthday,
-               status, created_at, updated_at)
-            VALUES (%s, CONCAT('用户', %s), MOD(%s, 2), NULL, NULL, 1, NULL,
-                    0, %s, %s)
-            ON DUPLICATE KEY UPDATE updated_at=GREATEST(updated_at, VALUES(updated_at))
-            """,
-            (event["user_id"], event["user_id"], event["user_id"], event_time, event_time),
-        )
-        cursor.execute(
-            "SELECT shop_id FROM product_info WHERE product_id = %s",
-            (event["product_id"],),
-        )
-        product_row = cursor.fetchone()
-        shop_id = product_row[0] if product_row else None
-        shipping_address = f"示例配送地址-{int(shop_id or 0) % 1000}"
-        cursor.execute(
-            """
-            INSERT INTO order_detail
-            (order_id, user_id, product_id, shop_id, product_price, product_num,
-             total_amount, payment_method, receiver_name, receiver_phone,
-             shipping_address, tracking_number, order_status,
-             create_time, cancel_time, payment_time, confirm_time, refund_time,
-             refund_finish_time, finish_time)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-              shop_id=VALUES(shop_id),
-              order_status=VALUES(order_status),
-              product_price=VALUES(product_price),
-              product_num=VALUES(product_num),
-              total_amount=VALUES(total_amount),
-              payment_method=VALUES(payment_method),
-              receiver_name=VALUES(receiver_name),
-              receiver_phone=VALUES(receiver_phone),
-              shipping_address=VALUES(shipping_address),
-              tracking_number=VALUES(tracking_number),
-              cancel_time=VALUES(cancel_time),
-              payment_time=VALUES(payment_time),
-              confirm_time=VALUES(confirm_time),
-              refund_time=VALUES(refund_time),
-              refund_finish_time=VALUES(refund_finish_time),
-              finish_time=VALUES(finish_time)
-            """,
-            (
-                event["order_id"],
-                event["user_id"],
-                event["product_id"],
-                shop_id,
-                amount,
-                1,
-                amount,
-                payment_method,
-                receiver_name,
-                receiver_phone,
-                shipping_address,
-                tracking_number,
-                order_status,
-                event_time,
-                cancel_time,
-                event_time,
-                confirm_time,
-                refund_time,
-                refund_finish_time,
-                finish_time,
-            ),
-        )
-        conn.commit()
-
-
-def maybe_write_bill(event):
-    """Persist an immutable charge when the event matches its billing mode."""
-    if (
-        event["event_type"] != billable_event_type(event.get("billing_mode"))
-        or float(event.get("spend") or 0) <= 0
-    ):
-        return
-    with mysql_conn() as conn:
-        cursor = conn.cursor()
-        event_time = event["ts"].replace("T", " ").split("+")[0]
-        cursor.execute(
-            """
-            INSERT INTO user_info
-              (uid, user_name, gender, phone_hash, email, user_level, birthday,
-               status, created_at, updated_at)
-            VALUES (%s, CONCAT('用户', %s), MOD(%s, 2), NULL, NULL, 1, NULL,
-                    0, %s, %s)
-            ON DUPLICATE KEY UPDATE updated_at=GREATEST(updated_at, VALUES(updated_at))
-            """,
-            (event["user_id"], event["user_id"], event["user_id"], event_time, event_time),
-        )
-        cursor.execute(
-            """
-            INSERT IGNORE INTO bill_detail
-            (bill_id, advertiser_id, campaign_id, unit_id, creative_id,
-             user_id, slot_id, billing_type, media, commerce_scene, cost, bill_time)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                event["event_id"],
-                event["advertiser_id"], event["campaign_id"], event["unit_id"],
-                event["creative_id"], event["user_id"], event["slot_id"],
-                {"CPM": 1, "OCPM": 1, "CPC": 2, "OCPC": 2,
-                 "CPA": 3, "OCPA": 3}[normalize_billing_mode(event["billing_mode"])],
-                event["media"], event["commerce_scene"],
-                int(round(float(event["spend"]) * 100000)),
-                event_time,
-            ),
-        )
-        conn.commit()
 
 
 def stable_factor(value, low=0.82, high=1.18):
@@ -395,8 +282,9 @@ def make_event(keys, event_time=None, rng=random):
     )
     order_rate = min(0.72, 0.46 * industry_conversion * objective_conversion)
     event_type = rng.choices(
-        ["impression", "click", "conversion", "order"],
-        weights=[1.0, click_rate, click_rate * conversion_rate, click_rate * conversion_rate * order_rate],
+        ["delivery", "impression", "click", "conversion", "order"],
+        weights=[1.0, 0.85, click_rate, click_rate * conversion_rate,
+                 click_rate * conversion_rate * order_rate],
         k=1,
     )[0]
     if commerce_scene == "external" and event_type == "order":
@@ -515,51 +403,60 @@ def make_attribution_impression(click_event, rng):
     return impression
 
 
-def send_event(producer, event):
-    """Wrap one simulated action in the raw SDK report written to ODS."""
-    action_names = {
-        "impression": "impression",
-        "click": "click",
-        "conversion": "conversion",
-    }
-    event_ts = epoch_millis(event["ts"])
-    action = {
-        "event_id": event["event_id"],
-        "action": action_names[event["event_type"]],
-        "creative_id": event["creative_id"],
-        "product_id": event["product_id"],
-        "slot_id": event["slot_id"],
-        "media": event["media"],
-        "commerce_scene": event["commerce_scene"],
-        "traffic_type": event["traffic_type"],
-        "play_during": int(event.get("play_during", 0)),
-        "ts": event_ts,
-    }
-    actions = [action]
-    if event["event_type"] == "impression":
-        actions.insert(0, {**action, "event_id": next_bigint_id(datetime.fromisoformat(event["ts"])),
-                           "action": "delivery", "play_during": 0})
+def send_event(event):
+    """Append one SDK JSON log directly to the Fluss realtime ODS."""
+    if event["event_type"] == "order":
+        return
 
-    report = {
+    event_ts = epoch_millis(event["ts"])
+    sdk_log = {
         "bus_id": BUS_ID,
         "app_id": APP_ID,
         "log_id": AD_LOG_ID,
-        "msg_id": next_bigint_id(datetime.fromisoformat(event["ts"])),
-        "common": common_fields(event),
-        "actions": actions,
+        "msg_id": int(event["event_id"]),
+        "common": {
+            "uid": int(event["user_id"]),
+            "area": str(event.get("region", "unknown")),
+            "ip": f"10.{int(event['user_id']) % 250}.{int(event['event_id']) % 250}.1",
+            "device_id": 20_000_000 + int(event["user_id"]),
+            "platform": int(event["user_id"]) % 2,
+            "app_version": "8.0.0",
+            "browser_version": "126.0",
+            "sdk_version": "3.3.0",
+        },
+        "events": [{
+            "event": event["event_type"],
+            "creative_id": int(event["creative_id"]),
+            "product_id": int(event.get("product_id") or 0),
+            "slot_id": int(event.get("slot_id") or 0),
+            "scene": event["commerce_scene"]
+            if event["commerce_scene"] in {"live", "short_video"}
+            else "ecommerce",
+            "ts": event_ts,
+        }],
         "ts": event_ts,
     }
-    producer.send(TOPIC, key=event["user_id"], value=report)
-    try:
-        maybe_write_bill(event)
-    except Exception as exc:
-        print(f"ad bill mysql write failed: {exc}", flush=True)
+    dt = datetime.fromisoformat(event["ts"]).astimezone(TZ).strftime("%Y-%m-%d")
+    if dt not in FLUSS_PARTITIONS:
+        FLUSS_LOOP.run_until_complete(create_fluss_partition(dt))
+        FLUSS_PARTITIONS.add(dt)
+    write = FLUSS_WRITER.append({
+        "msg_id": sdk_log["msg_id"],
+        "bus_id": sdk_log["bus_id"],
+        "app_id": sdk_log["app_id"],
+        "log_id": sdk_log["log_id"],
+        "common": json.dumps(sdk_log["common"], ensure_ascii=False, separators=(",", ":")),
+        "events": json.dumps(sdk_log["events"], ensure_ascii=False, separators=(",", ":")),
+        "ts": event_ts,
+        "dt": dt,
+    })
+    FLUSS_LOOP.run_until_complete(wait_for_write(write))
 
 
-def send_attribution_journey(producer, click_event, rng):
+def send_attribution_journey(click_event, rng):
     if click_event:
-        send_event(producer, make_attribution_impression(click_event, rng))
-        send_event(producer, click_event)
+        send_event(make_attribution_impression(click_event, rng))
+        send_event(click_event)
 
 
 def make_live_attribution_order(keys, scene, sequence, rng):
@@ -645,7 +542,7 @@ def historical_moments(days, rng):
         yield day, sorted(moments)
 
 
-def produce_history(producer, keys, rng):
+def produce_history(keys, rng):
     total = 0
     virtual_now = datetime.now(TZ)
     days = historical_dates(virtual_now)
@@ -679,19 +576,18 @@ def produce_history(producer, keys, rng):
         day_events.extend(demo_events_by_day.get(day, []))
         day_events.sort(key=lambda item: item["ts"])
         ad_log_count = 0
-        order_count = 0
+        sdk_order_count = 0
         for event in day_events:
             if event["event_type"] == "order":
-                maybe_write_order(event)
-                order_count += 1
+                send_event(event)
+                sdk_order_count += 1
             else:
-                send_event(producer, event)
+                send_event(event)
                 ad_log_count += 1
         total += ad_log_count
-        producer.flush(timeout=30)
         print(
             f"{NODE_ID} historical day ready: date={day} "
-            f"ad_log_events={ad_log_count} mysql_orders={order_count}",
+            f"ad_log_events={ad_log_count} sdk_order_events={sdk_order_count}",
             flush=True,
         )
 
@@ -747,13 +643,23 @@ def make_fraud_burst(keys):
     )
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Generate SDK JSON events directly into Fluss")
+    parser.add_argument("--rate", type=float, default=None, help="target SDK events per second")
+    parser.add_argument("--duration", type=float, default=None, help="run duration in seconds")
+    args = parser.parse_args()
+    if args.rate is not None and args.rate <= 0:
+        parser.error("--rate must be greater than zero")
+    if args.duration is not None and args.duration <= 0:
+        parser.error("--duration must be greater than zero")
+    return args
+
+
 def main():
+    args = parse_args()
+    interval = 1.0 / args.rate if args.rate else INTERVAL
+    live_started_at = time.monotonic()
     rng = random.Random(RANDOM_SEED + sum(ord(char) for char in NODE_ID))
-    producer = KafkaProducer(
-        bootstrap_servers=BOOTSTRAP,
-        value_serializer=lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
-        key_serializer=lambda value: str(value).encode("utf-8"),
-    )
     keys = []
     while not keys:
         try:
@@ -761,22 +667,27 @@ def main():
         except Exception as exc:
             print(f"waiting for mysql seed data: {exc}", flush=True)
             time.sleep(2)
-    print(f"{NODE_ID} producing ad events to {TOPIC} via {BOOTSTRAP}", flush=True)
-    historical_count = produce_history(producer, keys, rng)
+    while FLUSS_WRITER is None:
+        try:
+            connect_fluss()
+        except Exception as exc:
+            print(f"waiting for Fluss ODS table: {exc}", flush=True)
+            time.sleep(2)
+    print(f"{NODE_ID} appending SDK JSON directly to Fluss {FLUSS_DATABASE}.{FLUSS_ODS_TABLE}", flush=True)
+    historical_count = produce_history(keys, rng)
     if historical_count:
         print(f"{NODE_ID} historical backfill complete: events={historical_count}", flush=True)
     produced = 0
     while True:
+        if args.duration is not None and time.monotonic() - live_started_at >= args.duration:
+            break
         event = make_event(keys, rng=rng)
         if event["event_type"] == "order":
             attribution_click = attach_attribution_journey(event, rng)
-            send_attribution_journey(producer, attribution_click, rng)
-            try:
-                maybe_write_order(event)
-            except Exception as exc:
-                print(f"order mysql write failed: {exc}", flush=True)
+            send_attribution_journey(attribution_click, rng)
+            send_event(event)
         else:
-            send_event(producer, event)
+            send_event(event)
         produced += 1
 
         if LIVE_ORDER_EVERY > 0 and produced % LIVE_ORDER_EVERY == 0:
@@ -784,25 +695,21 @@ def main():
             live_order, live_click = make_live_attribution_order(
                 keys, COMMERCE_SCENES[scene_index], produced // LIVE_ORDER_EVERY, rng
             )
-            send_attribution_journey(producer, live_click, rng)
-            try:
-                maybe_write_order(live_order)
-            except Exception as exc:
-                print(f"live order cdc side-write failed: {exc}", flush=True)
+            send_attribution_journey(live_click, rng)
+            send_event(live_order)
 
         if FRAUD_INJECTION_ENABLED and FRAUD_BURST_EVERY > 0 and produced % FRAUD_BURST_EVERY == 0:
             burst = make_fraud_burst(keys)
             for fraud_event in burst:
-                send_event(producer, fraud_event)
+                send_event(fraud_event)
             print(
                 f"{NODE_ID} injected fraud burst: events={len(burst)} every={FRAUD_BURST_EVERY} size={FRAUD_BURST_SIZE}",
                 flush=True,
             )
 
-        producer.flush(timeout=5)
         live_intensity = traffic_intensity(datetime.now(TZ))
         jitter = rng.uniform(0.82, 1.18)
-        time.sleep(max(0.03, INTERVAL / (live_intensity * jitter)))
+        time.sleep(max(0.0001, interval / (live_intensity * jitter)))
 
 
 if __name__ == "__main__":

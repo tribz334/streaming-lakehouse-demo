@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS unit_info (
   campaign_id BIGINT NOT NULL,
   status INT NOT NULL DEFAULT 0,
   is_closed INT NOT NULL DEFAULT 0,
-  delivery_way INT NOT NULL DEFAULT 2,
+  delivery_type INT NOT NULL DEFAULT 2 COMMENT '1-电商广告，2-短视频广告，3-直播广告',
   search_keyword JSON NULL,
   product_id BIGINT NULL,
   landing_page_url VARCHAR(512) NULL,
@@ -124,12 +124,11 @@ CREATE TABLE IF NOT EXISTS order_detail (
   order_status INT NOT NULL,
   create_time TIMESTAMP NOT NULL,
   cancel_time TIMESTAMP NULL,
-  payment_time TIMESTAMP NULL,
+  pay_time TIMESTAMP NULL,
   confirm_time TIMESTAMP NULL,
   refund_time TIMESTAMP NULL,
-  refund_finish_time TIMESTAMP NULL,
-  finish_time TIMESTAMP NULL,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_order_status CHECK (order_status BETWEEN 1 AND 5)
 );
 
 CREATE TABLE IF NOT EXISTS bill_detail (

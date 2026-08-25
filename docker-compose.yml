@@ -1,180 +1,136 @@
+name: ${COMPOSE_PROJECT_NAME:-ustc_lakehouse}
+
 services:
   mysql:
     image: mysql:8.4
-    hostname: node-1-mysql
-    labels:
-      thesis.node: node-1
-      thesis.role: source-control
-    command:
-      - --server-id=1
-      - --log-bin=mysql-bin
-      - --binlog-format=ROW
-      - --binlog-row-image=FULL
-      - --gtid-mode=ON
-      - --enforce-gtid-consistency=ON
+    hostname: mysql
+    command: ["--server-id=1", "--log-bin=mysql-bin", "--binlog-format=ROW", "--binlog-row-image=FULL", "--gtid-mode=ON", "--enforce-gtid-consistency=ON"]
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    ports:
-      - "3306:3306"
+    ports: ["3306:3306"]
     volumes:
-      - mysql-data:/var/lib/mysql
+      - ./runtime-data/mysql:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
 
-  kafka-node-1:
-    image: apache/kafka:3.9.1
-    hostname: kafka-node-1
-    labels:
-      thesis.node: node-1
-      thesis.role: kafka-broker-controller
+  zookeeper:
+    image: zookeeper:3.9.2
+    hostname: zookeeper
     environment:
-      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-node-1:9092,PLAINTEXT_HOST://${KAFKA_EXTERNAL}
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-node-1:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
-      KAFKA_MIN_INSYNC_REPLICAS: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      # Persist Kafka logs in the mounted D-drive project directory. Without
-      # this setting the Apache Kafka image may use an internal container path.
-      KAFKA_LOG_DIRS: /var/lib/kafka/data
-    ports:
-      - "29092:29092"
+      ZOO_4LW_COMMANDS_WHITELIST: ruok
     volumes:
-      - ./runtime-data/kafka:/var/lib/kafka/data
+      - ./runtime-data/zookeeper/data:/data
+      - ./runtime-data/zookeeper/log:/datalog
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+      test: ["CMD-SHELL", "echo ruok | nc 127.0.0.1 2181 | grep imok"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
-  kafka-init:
-    image: apache/kafka:3.9.1
-    depends_on:
-      kafka-node-1:
-        condition: service_healthy
-    command:
-      - /bin/bash
-      - -lc
-      - >-
-        for topic in ods_log dwd_ad_action_log dwd_dirty_log dwd_order_detail; do /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-node-1:9092 --create --if-not-exists --topic $$topic --partitions 6 --replication-factor 1 --config min.insync.replicas=1; done
-    labels:
-      thesis.node: node-1
-      thesis.role: cluster-bootstrap
-
-  apicurio:
-    image: apicurio/apicurio-registry:3.2.5
-    profiles: ["governance"]
+  fluss-coordinator:
+    image: apache/fluss:${FLUSS_VERSION}
+    hostname: fluss-coordinator
+    command: coordinatorServer
     environment:
-      QUARKUS_HTTP_PORT: 8080
-    ports:
-      - "8081:8080"
+      FLUSS_PROPERTIES: |
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://fluss-coordinator:9123
+        remote.data.dir: file:///warehouse/fluss/remote
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: file:///warehouse/paimon
+    ports: ["19123:9123"]
+    volumes: ["./runtime-data/warehouse:/warehouse"]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+
+  fluss-tablet:
+    image: apache/fluss:${FLUSS_VERSION}
+    hostname: fluss-tablet
+    command: tabletServer
+    environment:
+      FLUSS_PROPERTIES: |
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://fluss-tablet:9123
+        data.dir: /warehouse/fluss/local
+        remote.data.dir: file:///warehouse/fluss/remote
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: file:///warehouse/paimon
+    volumes: ["./runtime-data/warehouse:/warehouse"]
+    depends_on: [fluss-coordinator]
 
   flink-jobmanager:
     build:
       context: ./flink
       args:
         FLINK_BASE_IMAGE: ${FLINK_BASE_IMAGE}
-        PAIMON_VERSION: ${PAIMON_VERSION}
-        FLINK_KAFKA_CONNECTOR_VERSION: ${FLINK_KAFKA_CONNECTOR_VERSION}
-        FLINK_CDC_VERSION: ${FLINK_CDC_VERSION}
-        MYSQL_CONNECTOR_VERSION: ${MYSQL_CONNECTOR_VERSION}
     image: ${FLINK_IMAGE}
-    hostname: node-1-flink-jobmanager
-    labels:
-      thesis.node: node-1
-      thesis.role: flink-control
+    hostname: flink-jobmanager
     command: jobmanager
     environment:
       TZ: Asia/Shanghai
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
+        rest.address: flink-jobmanager
         parallelism.default: 1
-        classloader.resolve-order: parent-first
-        execution.checkpointing.interval: 10s
+        execution.checkpointing.interval: 30s
         state.backend.type: hashmap
         state.checkpoint-storage: filesystem
         state.checkpoints.dir: file:///warehouse/checkpoints
-        rest.flamegraph.enabled: true
-        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
-        metrics.reporter.prom.port: 9249
-    ports:
-      - "18082:8081"
-      - "19249:9249"
+        table.local-time-zone: Asia/Shanghai
+        jobmanager.memory.off-heap.size: 512m
+    ports: ["18082:8081"]
     volumes:
-      - warehouse-v3:/warehouse
+      - ./runtime-data/warehouse:/warehouse
       - ./flink/sql:/opt/flink/usrlib/sql:ro
-      - ./flink-java/target:/opt/flink/usrlib/java:ro
-      - ./flink-cdc:/opt/flink-cdc/pipelines:ro
     depends_on:
-      kafka-init:
-        condition: service_completed_successfully
       mysql:
         condition: service_healthy
-      hive-metastore:
-        condition: service_healthy
+      fluss-coordinator:
+        condition: service_started
+      fluss-tablet:
+        condition: service_started
 
-  flink-taskmanager-node-1:
+  flink-taskmanager:
     image: ${FLINK_IMAGE}
     pull_policy: never
-    hostname: node-1-flink-taskmanager
-    labels:
-      thesis.node: node-1
-      thesis.role: flink-compute
+    hostname: flink-taskmanager
     command: taskmanager
     environment:
       TZ: Asia/Shanghai
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 8
-        taskmanager.memory.process.size: 3072m
-        taskmanager.memory.jvm-metaspace.size: 256m
-        taskmanager.memory.network.min: 128m
-        taskmanager.memory.network.max: 256m
+        taskmanager.numberOfTaskSlots: 16
+        taskmanager.memory.process.size: 4096m
+        taskmanager.memory.framework.off-heap.size: 512m
         parallelism.default: 1
-        classloader.resolve-order: parent-first
-        execution.checkpointing.interval: 10s
+        execution.checkpointing.interval: 30s
         state.backend.type: hashmap
         state.checkpoint-storage: filesystem
         state.checkpoints.dir: file:///warehouse/checkpoints
-        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
-        metrics.reporter.prom.port: 9249
-    volumes:
-      - warehouse-v3:/warehouse
-    depends_on:
-      - flink-jobmanager
+        table.local-time-zone: Asia/Shanghai
+    volumes: ["./runtime-data/warehouse:/warehouse"]
+    depends_on: [flink-jobmanager]
 
-  event-generator-node-1:
+  event-generator:
     build:
-      context: ./generator
+      context: .
+      dockerfile: generator/Dockerfile
     image: ustc/event-generator:latest
-    labels:
-      thesis.node: node-1
-      thesis.role: event-ingestion
     environment:
       GENERATOR_NODE_ID: ingest-node-1
       GENERATOR_RANDOM_SEED: 20260713
-      GENERATOR_HISTORY_DAYS: 35
+      GENERATOR_HISTORY_DAYS: 0
       GENERATOR_HISTORY_EVENTS_PER_DAY: 180
-      GENERATOR_HISTORY_START_DATE: "2026-06-01"
-      GENERATOR_HISTORY_END_DATE: "2026-07-17"
-      KAFKA_BOOTSTRAP_SERVERS: kafka-node-1:9092
-      TOPIC: ods_log
       EVENT_INTERVAL_SECONDS: 0.25
       GENERATOR_LIVE_ORDER_EVERY: 5
       MYSQL_HOST: mysql
@@ -182,62 +138,64 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: root
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      FLUSS_BOOTSTRAP_SERVERS: fluss-coordinator:9123
+      FLUSS_DATABASE: ad_dw
+      FLUSS_ODS_TABLE: ods_log_di
       FRAUD_INJECTION_ENABLED: "true"
       FRAUD_BURST_EVERY: 180
       FRAUD_BURST_SIZE: 36
       FRAUD_USER_POOL: 3
     depends_on:
-      kafka-init:
-        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      fluss-coordinator:
+        condition: service_started
+      fluss-tablet:
+        condition: service_started
+
+  mysql-change-generator:
+    profiles: ["mysql-cdc-generator"]
+    build:
+      context: .
+      dockerfile: generator/Dockerfile
+    image: ustc/event-generator:latest
+    command: ["python", "produce_mysql_changes.py", "--rate", "30"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_GENERATOR_RANDOM_SEED: 20260824
+    depends_on:
       mysql:
         condition: service_healthy
 
   starrocks:
     image: starrocks/fe-ubuntu:4.0-latest
-    profiles: ["olap"]
     hostname: starrocks
-    labels:
-      thesis.node: node-1
-      thesis.role: starrocks-fe
     command: ["/opt/starrocks/fe_entrypoint.sh", "starrocks"]
-    environment:
-      HOST_TYPE: FQDN
-      LOG_CONSOLE: "1"
-      CONFIGMAP_MOUNT_PATH: /demo-conf
-    ports:
-      - "18030:8030"
-      - "19030:9030"
-      - "9010:9010"
+    environment: {HOST_TYPE: FQDN, LOG_CONSOLE: "1", CONFIGMAP_MOUNT_PATH: /demo-conf}
+    ports: ["18030:8030", "19030:9030", "9010:9010"]
     volumes:
-      - starrocks-fe-meta:/opt/starrocks/fe/meta
-      - warehouse-v3:/warehouse
+      - ./runtime-data/starrocks/fe-meta:/opt/starrocks/fe/meta
+      - ./runtime-data/warehouse:/warehouse
       - ./starrocks/conf/fe.conf:/demo-conf/fe.conf:ro
-      - ./starrocks:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysql -h127.0.0.1 -P9030 -uroot -e 'SHOW FRONTENDS' >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "mysql --protocol=TCP --host=127.0.0.1 --port=9030 --user=root -e 'SHOW FRONTENDS' >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 30
 
-  starrocks-be-node-1:
+  starrocks-be:
     image: starrocks/be-ubuntu:4.0-latest
-    profiles: ["olap"]
-    hostname: starrocks-be-node-1
-    labels:
-      thesis.node: node-1
-      thesis.role: starrocks-be
+    restart: unless-stopped
+    hostname: starrocks-be
     command: ["/opt/starrocks/be_entrypoint.sh", "starrocks"]
-    environment:
-      HOST_TYPE: FQDN
-      LOG_CONSOLE: "1"
-      CONFIGMAP_MOUNT_PATH: /demo-conf
-    ports:
-      - "18040:8040"
-      - "19050:9050"
-      - "19060:9060"
+    environment: {HOST_TYPE: FQDN, LOG_CONSOLE: "1", CONFIGMAP_MOUNT_PATH: /demo-conf}
     volumes:
-      - starrocks-be-storage:/opt/starrocks/be/storage
-      - warehouse-v3:/warehouse
+      - ./runtime-data/starrocks/be-storage:/opt/starrocks/be/storage
+      - ./runtime-data/warehouse:/warehouse
       - ./starrocks/conf/be.conf:/demo-conf/be.conf:ro
     depends_on:
       starrocks:
@@ -247,146 +205,13 @@ services:
     image: ${SUPERSET_IMAGE}
     profiles: ["bi"]
     environment:
-      SUPERSET_SECRET_KEY: "ustc-streaming-lakehouse-demo-secret"
+      SUPERSET_SECRET_KEY: ustc-streaming-lakehouse-demo-secret
       SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
-    ports:
-      - "18088:8088"
+    ports: ["18088:8088"]
+    volumes:
+      - ./runtime-data/superset:/app/superset_home
+      - ./superset:/app/pythonpath:ro
     depends_on:
       starrocks:
         condition: service_healthy
-    volumes:
-      - superset-home:/app/superset_home
-      - ./superset:/app/pythonpath:ro
-    command:
-      - /bin/bash
-      - -c
-      - |
-        superset db upgrade &&
-        superset fab create-admin --username admin --firstname USTC --lastname Demo --email admin@example.com --password admin || true &&
-        superset init &&
-        superset set-database-uri -d StarRocks -u mysql://root@starrocks:9030/ad_ads &&
-        python /app/pythonpath/backfill_creative_offline_snapshot.py &&
-        python /app/pythonpath/bootstrap_datasets.py &&
-        python /app/pythonpath/bootstrap_dashboard.py &&
-        python /app/pythonpath/bootstrap_offline_dashboard.py &&
-        python /app/pythonpath/bootstrap_attribution_dashboard.py &&
-        python /app/pythonpath/bootstrap_fraud_dashboard.py &&
-        superset run -h 0.0.0.0 -p 8088
-
-  prometheus:
-    image: prom/prometheus:v2.53.4
-    profiles: ["ops"]
-    ports:
-      - "19090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-
-  grafana:
-    image: grafana/grafana:11.6.1
-    profiles: ["ops"]
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-    ports:
-      - "13000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on:
-      - prometheus
-      - loki
-      - alloy
-
-  loki:
-    image: grafana/loki:3.5.2
-    profiles: ["ops"]
-    command: ["-config.file=/etc/loki/local-config.yaml"]
-    ports:
-      - "13100:3100"
-    volumes:
-      - ./loki/local-config.yaml:/etc/loki/local-config.yaml:ro
-      - loki-data:/loki
-
-  alloy:
-    image: grafana/alloy:v1.16.1
-    profiles: ["ops"]
-    command:
-      - run
-      - --server.http.listen-addr=0.0.0.0:12345
-      - --storage.path=/var/lib/alloy/data
-      - /etc/alloy/config.alloy
-    environment:
-      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-streaming-lakehouse-demo}
-    ports:
-      - "12346:12345"
-    volumes:
-      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - alloy-data:/var/lib/alloy/data
-    depends_on:
-      - loki
-
-  hive-metastore:
-    image: apache/hive:3.1.3
-    user: root
-    hostname: hive-metastore
-    labels:
-      thesis.node: node-1
-      thesis.role: metadata-catalog
-    environment:
-      SERVICE_NAME: metastore
-      DB_DRIVER: derby
-      # Hive 3's entrypoint derives schema-init behavior from IS_RESUME.
-      IS_RESUME: "true"
-      SERVICE_OPTS: >-
-        -Djavax.jdo.option.ConnectionURL=jdbc:derby:;databaseName=/opt/hive/data/metastore_db;create=true
-        -Djavax.jdo.option.ConnectionDriverName=org.apache.derby.jdbc.EmbeddedDriver
-    ports:
-      - "19083:9083"
-    volumes:
-      # Hive 3 uses a separate metadata volume. The previous Hive 4 volume is
-      # intentionally retained for rollback and is not deleted.
-      - hive-metastore-data-v3:/opt/hive/data
-      - warehouse-v3:/warehouse
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9083'"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 20s
-
-  dolphinscheduler:
-    build:
-      context: ./dolphinscheduler
-      dockerfile: Dockerfile
-    image: apache/dolphinscheduler-standalone-server:3.3.2
-    profiles: ["scheduler"]
-    environment:
-      # The demo stack runs many data services on one Docker Desktop VM.
-      # Disable host-wide overload gating so a short local DAG is not held
-      # indefinitely when aggregate VM memory usage exceeds the default 80%.
-      MASTER_SERVER_LOAD_PROTECTION_ENABLED: "false"
-      WORKER_SERVER_LOAD_PROTECTION_ENABLED: "false"
-    ports:
-      - "12345:12345"
-      - "25333:25333"
-    volumes:
-      - ./dolphinscheduler:/workspace/dolphinscheduler
-      - .:/workspace/project
-      - /var/run/docker.sock:/var/run/docker.sock
-
-volumes:
-  mysql-data:
-  warehouse:
-  warehouse-v3:
-  starrocks-fe-meta:
-  starrocks-be-storage:
-  superset-home:
-  grafana-data:
-  prometheus-data:
-  loki-data:
-  alloy-data:
-  hive-metastore-data:
-  hive-metastore-data-v3:
+    command: ["/bin/bash", "-lc", "superset db upgrade && superset fab create-admin --username admin --firstname USTC --lastname Demo --email admin@example.com --password admin || true; superset init && superset set-database-uri -d StarRocks -u mysql://root@starrocks:9030/ad_ads && python /app/pythonpath/bootstrap_datasets.py && python /app/pythonpath/bootstrap_dashboard.py && superset run -h 0.0.0.0 -p 8088"]

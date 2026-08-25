@@ -6,12 +6,12 @@ from superset.app import create_app
 
 DASHBOARD_TITLE = "广告实时核心指标大盘"
 LEGACY_DASHBOARD_TITLE = "Real-Time Advertising Performance Dashboard"
-DATASET_NAME = "v_realtime_ad_metrics"
-TODAY_DATASET_NAME = "v_realtime_ad_metrics_today"
+DATASET_NAME = "v_ads_realtime_metric_30s"
+TODAY_DATASET_NAME = "v_ads_realtime_metric_30s"
 # Superset 3 parses relative ranges in UTC while StarRocks keeps the business
 # window as Asia/Shanghai local time. This UTC+8 equivalent keeps both the SQL
 # filter and the displayed axis on Beijing time.
-TREND_RANGE = "6 hours from now : 8 hours from now"
+TREND_RANGE = "Last 2 hours"
 
 LEGACY_CHART_NAMES = {
     "广告消耗": "Ad Spend",
@@ -27,7 +27,7 @@ LEGACY_CHART_NAMES = {
 def realtime_filter():
     return {
         "expressionType": "SIMPLE",
-        "subject": "window_start_local",
+        "subject": "window_start",
         "operator": "TEMPORAL_RANGE",
         "comparator": TREND_RANGE,
         "clause": "WHERE",
@@ -184,24 +184,32 @@ def main():
         # Paper-aligned realtime dashboard: cards are cumulative from the
         # current business-day midnight; the line chart remains window based.
         specs = [
-            metric_card(today_datasource, "广告消耗", "total_spend", "今日累计"),
-            metric_card(today_datasource, "内循环消耗", "inner_loop_spend", "今日累计"),
-            metric_card(today_datasource, "内循环GMV", "inner_loop_gmv", "今日累计"),
-            metric_card(today_datasource, "ROAS", "inner_loop_roas", "内循环GMV / 内循环消耗", ",.2f"),
-            metric_card(today_datasource, "短视频GMV", "short_video_attributed_gmv", "今日累计"),
-            metric_card(today_datasource, "直播GMV", "live_attributed_gmv", "今日累计"),
-            metric_card(today_datasource, "电商GMV", "shop_attributed_gmv", "今日累计"),
+            metric_card(today_datasource, "广告消耗", "total_cost", "今日累计"),
+            metric_card(today_datasource, "支付GMV", "total_pay_order_gmv", "今日累计"),
+            metric_card(today_datasource, "曝光量", "total_impression_count", "今日累计"),
+            metric_card(today_datasource, "点击量", "total_click_count", "今日累计"),
+            metric_card(today_datasource, "转化量", "total_conversion_count", "今日累计"),
+            metric_card(today_datasource, "订单量", "total_pay_order_count", "今日累计"),
+            metric_card(today_datasource, "ROI", "roas", "支付GMV / 消耗", ",.2f"),
         ]
+        specs.extend([
+            metric_card(today_datasource, "电商广告支付 GMV", "total_ecommerce_pay_order_gmv", "实时分类"),
+            metric_card(today_datasource, "短视频广告支付 GMV", "total_short_video_pay_order_gmv", "实时分类"),
+            metric_card(today_datasource, "直播广告支付 GMV", "total_live_pay_order_gmv", "实时分类"),
+            metric_card(today_datasource, "电商广告退款 GMV", "total_ecommerce_refund_order_gmv", "实时分类"),
+            metric_card(today_datasource, "短视频广告退款 GMV", "total_short_video_refund_order_gmv", "实时分类"),
+            metric_card(today_datasource, "直播广告退款 GMV", "total_live_refund_order_gmv", "实时分类"),
+        ])
         specs.append({
             "slice_name": "近2小时广告消耗与内循环GMV趋势",
             "viz_type": "echarts_timeseries_line",
             "params": {
                 "datasource": "",
                 "viz_type": "echarts_timeseries_line",
-                "x_axis": "window_start_local",
+                "x_axis": "window_start",
                 "time_grain_sqla": "PT1M",
                 "time_range": TREND_RANGE,
-                "metrics": ["内循环GMV", "广告消耗"],
+                "metrics": ["total_pay_order_gmv", "total_cost"],
                 "groupby": [],
                 "adhoc_filters": [realtime_filter()],
                 "row_limit": 10000,
@@ -215,9 +223,9 @@ def main():
         })
         charts = [
             create_chart(db, Slice, today_datasource, spec)
-            for spec in specs[:7]
+            for spec in specs[:-1]
         ]
-        charts.append(create_chart(db, Slice, datasource, specs[7]))
+        charts.append(create_chart(db, Slice, datasource, specs[-1]))
         layout = {}
         root = "ROOT_ID"
         grid = "GRID_ID"
@@ -299,6 +307,33 @@ def main():
             }
             layout[row_id]["children"].append(node)
 
+        for suffix, selected in (("PAY_TYPE", charts[7:10]), ("REFUND_TYPE", charts[10:13])):
+            row_id = f"ROW_{suffix}"
+            rows.append(row_id)
+            layout[row_id] = {
+                "id": row_id,
+                "type": "ROW",
+                "parents": [root, grid],
+                "children": [],
+                "meta": {"background": "BACKGROUND_TRANSPARENT"},
+            }
+            for chart in selected:
+                node = f"CHART-{chart.id}"
+                layout[node] = {
+                    "id": node,
+                    "type": "CHART",
+                    "parents": [root, grid, row_id],
+                    "children": [],
+                    "meta": {
+                        "chartId": chart.id,
+                        "sliceName": chart.slice_name,
+                        "uuid": str(chart.uuid),
+                        "width": 4,
+                        "height": 24,
+                    },
+                }
+                layout[row_id]["children"].append(node)
+
         row_id = "ROW_REALTIME_TREND"
         rows.append(row_id)
         layout[row_id] = {
@@ -308,7 +343,7 @@ def main():
             "children": [],
             "meta": {"background": "BACKGROUND_TRANSPARENT"},
         }
-        for chart, width in ((charts[7], 12),):
+        for chart, width in ((charts[-1], 12),):
             node = f"CHART-{chart.id}"
             layout[node] = {
                 "id": node,

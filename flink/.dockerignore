@@ -1,0 +1,12 @@
+*
+!Dockerfile
+!lib/
+!lib/paimon-flink-1.20.jar
+!lib/fluss-flink-1.20.jar
+!lib/fluss-flink-tiering.jar
+!lib/fluss-lake-paimon.jar
+!lib/flink-sql-connector-mysql-cdc-3.6.0-1.20.jar
+!lib/mysql-connector-j.jar
+!lib/flink-connector-starrocks.jar
+!lib/hadoop-client-api.jar
+!lib/hadoop-client-runtime.jar

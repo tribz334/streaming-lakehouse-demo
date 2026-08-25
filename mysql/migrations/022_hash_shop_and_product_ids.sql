@@ -1,1 +1,0 @@
--- Retired: shop/product IDs are native BIGINT values and are never hashed.

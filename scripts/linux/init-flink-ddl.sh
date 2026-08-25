@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
-
-docker compose exec -T flink-jobmanager /bin/bash -lc \
-  "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sql/00_catalogs_and_tables.sql"
-
-docker compose exec -T flink-jobmanager /bin/bash -lc \
-  "/opt/flink/bin/sql-client.sh -f /opt/flink/usrlib/sql/01_model_tables.sql"
-
-echo "Flink catalogs and thesis Appendix A tables initialized."
+output="$(docker compose exec -T flink-jobmanager /opt/flink/bin/sql-client.sh \
+  -f "/opt/flink/usrlib/sql/00_bootstrap.sql" 2>&1)"
+printf '%s\n' "$output"
+! grep -q '\[ERROR\]' <<<"$output"
+docker compose exec -T -u 0 flink-jobmanager chown -R flink:flink /warehouse
+echo "Fluss hot tables and native Paimon offline tables are ready."

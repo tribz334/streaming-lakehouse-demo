@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 if ($PSVersionTable.PSVersion.Major -ge 7) {
   $PSNativeCommandUseErrorActionPreference = $false
 }
@@ -10,7 +10,10 @@ $migrationFiles = @(
   "mysql/migrations/030_normalize_order_amount_fields.sql",
   "mysql/migrations/031_add_order_shop_id.sql",
   "mysql/migrations/032_enrich_creative_config.sql",
-  "mysql/migrations/034_repair_utf8_master_data.sql"
+  "mysql/migrations/034_repair_utf8_master_data.sql",
+  "mysql/migrations/035_remove_order_ad_source_fields.sql",
+  "mysql/migrations/036_simplify_order_lifecycle.sql",
+  "mysql/migrations/037_rename_unit_delivery_type.sql"
 )
 $deadline = (Get-Date).AddMinutes(2)
 do {
