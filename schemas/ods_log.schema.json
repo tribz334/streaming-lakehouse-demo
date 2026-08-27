@@ -61,7 +61,6 @@
           "creative_id",
           "product_id",
           "slot_id",
-          "scene",
           "ts"
         ],
         "properties": {
@@ -77,11 +76,6 @@
           },
           "slot_id": {
             "type": "integer"
-          },
-          "scene": {
-            "type": "string",
-            "enum": ["ecommerce", "short_video", "live"],
-            "description": "广告场景：电商、短视频或直播"
           },
           "ts": {
             "type": "integer",

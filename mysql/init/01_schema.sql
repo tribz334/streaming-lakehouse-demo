@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS campaign_info (
   advertiser_id BIGINT NOT NULL,
   status INT NOT NULL DEFAULT 4,
   market_goal INT NOT NULL DEFAULT 4,
-  ad_type INT NOT NULL DEFAULT 1,
   trading_mode INT NOT NULL DEFAULT 0,
   budget BIGINT NOT NULL,
   daily_budget BIGINT NOT NULL,
@@ -35,7 +34,8 @@ CREATE TABLE IF NOT EXISTS unit_info (
   campaign_id BIGINT NOT NULL,
   status INT NOT NULL DEFAULT 0,
   is_closed INT NOT NULL DEFAULT 0,
-  delivery_type INT NOT NULL DEFAULT 2 COMMENT '1-电商广告，2-短视频广告，3-直播广告',
+  placement_type INT NOT NULL DEFAULT 6 COMMENT '1-search,2-splash,3-feed,4-rewarded,5-banner,6-other',
+  ad_type INT NOT NULL DEFAULT 4 COMMENT '1-short_video,2-live,3-image_text,4-other',
   search_keyword JSON NULL,
   product_id BIGINT NULL,
   landing_page_url VARCHAR(512) NULL,
@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS unit_info (
   bid BIGINT NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_unit_placement_type CHECK (placement_type BETWEEN 1 AND 6),
+  CONSTRAINT chk_unit_ad_type CHECK (ad_type BETWEEN 1 AND 4),
   CONSTRAINT fk_unit_campaign FOREIGN KEY (campaign_id) REFERENCES campaign_info(campaign_id)
 );
 
@@ -141,7 +143,7 @@ CREATE TABLE IF NOT EXISTS bill_detail (
   slot_id BIGINT NOT NULL,
   billing_type TINYINT NOT NULL COMMENT '1-曝光，2-点击，3-转化',
   media VARCHAR(32) NOT NULL,
-  commerce_scene VARCHAR(32) NOT NULL,
+  commerce_channel VARCHAR(32) NOT NULL,
   cost BIGINT NOT NULL COMMENT '消耗，单位千分之一分',
   bill_time TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

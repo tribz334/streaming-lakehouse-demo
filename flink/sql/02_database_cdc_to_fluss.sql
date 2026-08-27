@@ -14,12 +14,12 @@ CREATE TEMPORARY TABLE mysql_advertiser (
 
 CREATE TEMPORARY TABLE mysql_campaign (
   campaign_id BIGINT,campaign_name STRING,advertiser_id BIGINT,status INT,market_goal INT,
-  ad_type INT,trading_mode INT,budget BIGINT,daily_budget BIGINT,created_at TIMESTAMP(3),
+  trading_mode INT,budget BIGINT,daily_budget BIGINT,created_at TIMESTAMP(3),
   updated_at TIMESTAMP(3),PRIMARY KEY(campaign_id) NOT ENFORCED
 ) WITH ('connector'='mysql-cdc','hostname'='mysql','port'='3306','username'='root','password'='root','database-name'='ad_ods','table-name'='campaign_info','server-id'='5421-5428','server-time-zone'='UTC','scan.startup.mode'='initial');
 
 CREATE TEMPORARY TABLE mysql_unit (
-  unit_id BIGINT,unit_name STRING,campaign_id BIGINT,status INT,is_closed INT,delivery_type INT,
+  unit_id BIGINT,unit_name STRING,campaign_id BIGINT,status INT,is_closed INT,placement_type INT,ad_type INT,
   search_keyword STRING,product_id BIGINT,landing_page_url STRING,audience STRING,
   start_date TIMESTAMP(3),end_date TIMESTAMP(3),daily_budget BIGINT,bid_type STRING,bid BIGINT,
   created_at TIMESTAMP(3),updated_at TIMESTAMP(3),PRIMARY KEY(unit_id) NOT ENFORCED
@@ -72,12 +72,12 @@ BEGIN
 
   INSERT INTO fluss.ad_dw.dim_campaign_df
   SELECT c.campaign_id,c.campaign_name,c.advertiser_id,a.advertiser_name,c.status,c.market_goal,
-    c.ad_type,c.trading_mode,c.budget,c.daily_budget,CAST(c.created_at AS STRING),
+    c.trading_mode,c.budget,c.daily_budget,CAST(c.created_at AS STRING),
     CAST(c.updated_at AS STRING) FROM mysql_campaign c LEFT JOIN mysql_advertiser a
     ON c.advertiser_id=a.advertiser_id;
 
   INSERT INTO fluss.ad_dw.dim_unit_df
-  SELECT u.unit_id,u.unit_name,u.campaign_id,c.campaign_name,u.status,u.is_closed,u.delivery_type,
+  SELECT u.unit_id,u.unit_name,u.campaign_id,c.campaign_name,u.status,u.is_closed,u.placement_type,u.ad_type,
     JSON_QUERY(u.search_keyword,'$' RETURNING ARRAY<STRING>),u.product_id,u.landing_page_url,
     u.audience,CAST(u.start_date AS STRING),CAST(u.end_date AS STRING),u.daily_budget,u.bid_type,
     u.bid,CAST(u.created_at AS STRING),CAST(u.updated_at AS STRING)

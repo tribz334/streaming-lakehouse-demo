@@ -12,7 +12,7 @@ for migration in \
   mysql/migrations/034_repair_utf8_master_data.sql \
   mysql/migrations/035_remove_order_ad_source_fields.sql \
   mysql/migrations/036_simplify_order_lifecycle.sql \
-  mysql/migrations/037_rename_unit_delivery_type.sql; do
+  mysql/migrations/038_unit_classification.sql; do
   docker compose exec -T mysql mysql -uroot -proot --default-character-set=utf8mb4 < "$migration"
   echo "Applied $migration"
 done

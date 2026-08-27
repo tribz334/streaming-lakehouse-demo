@@ -70,7 +70,8 @@ services:
 
   flink-jobmanager:
     build:
-      context: ./flink
+      context: .
+      dockerfile: flink/Dockerfile
       args:
         FLINK_BASE_IMAGE: ${FLINK_BASE_IMAGE}
     image: ${FLINK_IMAGE}

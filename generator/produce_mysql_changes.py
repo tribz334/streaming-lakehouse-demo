@@ -20,7 +20,7 @@ ORDER_WEIGHTS = (45, 30, 12, 8, 5)
 CHANGE_TYPES = ("BILL", "ORDER", "DIM")
 CHANGE_WEIGHTS = (60, 38, 2)
 MEDIA = ("douyin", "kuaishou", "weibo", "toutiao")
-SCENES = ("ecommerce", "short_video", "live")
+COMMERCE_CHANNELS = ("ecommerce", "short_video", "live")
 
 
 def db_now() -> datetime:
@@ -337,14 +337,14 @@ class MySQLChangeGenerator:
                 """
                 INSERT INTO bill_detail
                   (bill_id,advertiser_id,campaign_id,unit_id,creative_id,user_id,
-                   slot_id,billing_type,media,commerce_scene,cost,bill_time)
+                   slot_id,billing_type,media,commerce_channel,cost,bill_time)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     self.bill_ids.next(), int(key["advertiser_id"]),
                     int(key["campaign_id"]), int(key["unit_id"]),
                     int(key["creative_id"]), uid, self.rng.randint(101, 512),
-                    billing_type, self.rng.choice(MEDIA), self.rng.choice(SCENES),
+                    billing_type, self.rng.choice(MEDIA), self.rng.choice(COMMERCE_CHANNELS),
                     cost, db_now(),
                 ),
             )
@@ -357,7 +357,8 @@ class MySQLChangeGenerator:
             ("campaign_info", "campaign_id", "status", lambda: self.rng.choice((3, 4))),
             ("unit_info", "unit_id", "daily_budget", lambda: self.rng.randint(100000, 500000000)),
             ("unit_info", "unit_id", "bid", lambda: self.rng.randint(15000, 950000)),
-            ("unit_info", "unit_id", "delivery_type", lambda: self.rng.choice((1, 2, 3))),
+            ("unit_info", "unit_id", "placement_type", lambda: self.rng.randint(1, 6)),
+            ("unit_info", "unit_id", "ad_type", lambda: self.rng.randint(1, 4)),
             ("creative_info", "creative_id", "status", lambda: self.rng.choice((0, 1))),
             ("product_info", "product_id", "price", lambda: self.rng.randint(500000, 500000000)),
             ("user_info", "uid", "user_level", lambda: self.rng.randint(0, 5)),

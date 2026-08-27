@@ -1,0 +1,53 @@
+{
+  "style": 1,
+  "width": 1200,
+  "height": 820,
+  "title": "广告湖仓 DataStream 实时链路",
+  "subtitle": "Fluss 作为实时入口与热存储；LastClick 6 小时；实时指标 10 秒滚动窗口",
+  "containers": [
+    {"x": 32, "y": 94, "width": 1136, "height": 190, "label": "日志处理", "subtitle": "埋点 JSON → 校验 / 补维 / 脏数据分流"},
+    {"x": 32, "y": 308, "width": 1136, "height": 190, "label": "LASTCLICK 归因", "subtitle": "uid + product_id，事件时间窗口保持 6 小时"},
+    {"x": 32, "y": 522, "width": 1136, "height": 226, "label": "实时指标", "subtitle": "行为 / 账单 / 订单增量 → 10 秒 TUMBLE → 查询服务"}
+  ],
+  "nodes": [
+    {"id": "sdk", "x": 76, "y": 160, "width": 150, "height": 74, "kind": "icon_box", "label": "埋点客户端", "sublabel": "SDK JSON", "fill": "#eff6ff", "stroke": "#93c5fd", "flat": true},
+    {"id": "ods", "x": 282, "y": 160, "width": 180, "height": 74, "kind": "cylinder", "label": "Fluss ods_log_di", "sublabel": "append-only ODS", "fill": "#f0fdfa", "stroke": "#5eead4", "flat": true},
+    {"id": "parse", "x": 522, "y": 160, "width": 190, "height": 74, "kind": "double_rect", "label": "日志 DataStream", "sublabel": "解析 · 校验 · 补维", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "dwd", "x": 772, "y": 160, "width": 180, "height": 74, "kind": "cylinder", "label": "dwd_ad_event_di", "sublabel": "广告行为事实", "fill": "#f0fdf4", "stroke": "#86efac", "flat": true},
+    {"id": "dirty", "x": 994, "y": 160, "width": 140, "height": 74, "kind": "document", "label": "dirty_di", "sublabel": "侧输出", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
+
+    {"id": "click", "x": 76, "y": 376, "width": 178, "height": 74, "label": "广告点击流", "sublabel": "Fluss DWD CLICK", "fill": "#eff6ff", "stroke": "#93c5fd", "flat": true},
+    {"id": "order", "x": 76, "y": 454, "width": 178, "height": 74, "label": "支付订单流", "sublabel": "Fluss DWD PAY", "fill": "#f0fdfa", "stroke": "#5eead4", "flat": true},
+    {"id": "key", "x": 350, "y": 414, "width": 190, "height": 74, "kind": "hexagon", "label": "keyBy", "sublabel": "uid + product_id", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "attrib", "x": 626, "y": 414, "width": 230, "height": 74, "kind": "double_rect", "label": "AttributionProcess", "sublabel": "6 小时 LastClick", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
+    {"id": "acc", "x": 950, "y": 414, "width": 184, "height": 74, "kind": "cylinder", "label": "dwd_ad_order_acc", "sublabel": "固化归因维度", "fill": "#f0fdf4", "stroke": "#86efac", "flat": true},
+
+    {"id": "facts", "x": 76, "y": 604, "width": 190, "height": 86, "label": "三类 DWD 事实", "sublabel": "event · bill · order", "fill": "#eff6ff", "stroke": "#93c5fd", "flat": true},
+    {"id": "delta", "x": 338, "y": 604, "width": 176, "height": 86, "label": "Signed Delta", "sublabel": "map / union / watermark", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "window", "x": 586, "y": 604, "width": 190, "height": 86, "kind": "double_rect", "label": "10 秒 TUMBLE", "sublabel": "增量 AggregateFunction", "fill": "#fff7ed", "stroke": "#fb923c", "flat": true},
+    {"id": "ads", "x": 848, "y": 604, "width": 240, "height": 86, "kind": "cylinder", "label": "ads_realtime_metric_10s", "sublabel": "Fluss → Paimon", "fill": "#f0fdf4", "stroke": "#4ade80", "flat": true},
+    {"id": "bi", "x": 900, "y": 708, "width": 188, "height": 58, "label": "StarRocks → Superset", "sublabel": "实时查询与可视化", "fill": "#eff6ff", "stroke": "#60a5fa", "flat": true}
+  ],
+  "arrows": [
+    {"source": "sdk", "target": "ods", "label": "JSON", "flow": "data"},
+    {"source": "ods", "target": "parse", "label": "Table → Stream", "flow": "read"},
+    {"source": "parse", "target": "dwd", "label": "valid event", "flow": "write"},
+    {"source": "parse", "target": "dirty", "label": "dirty", "flow": "async"},
+    {"source": "click", "target": "key", "label": "click", "flow": "read"},
+    {"source": "order", "target": "key", "label": "order", "flow": "read"},
+    {"source": "key", "target": "attrib", "label": "connect", "flow": "control"},
+    {"source": "attrib", "target": "acc", "label": "attributed", "flow": "write"},
+    {"source": "facts", "target": "delta", "label": "changelog", "flow": "read"},
+    {"source": "delta", "target": "window", "label": "MetricDelta", "flow": "data"},
+    {"source": "window", "target": "ads", "label": "10s metric", "flow": "write"},
+    {"source": "ads", "target": "bi", "label": "external view", "flow": "read"}
+  ],
+  "legend": [
+    {"flow": "read", "label": "读取 / 查询"},
+    {"flow": "write", "label": "写入"},
+    {"flow": "data", "label": "数据变换"},
+    {"flow": "async", "label": "侧输出"}
+  ],
+  "legend_position": "bottom-left",
+  "footer": "无 Kafka：DataStream API 通过 Fluss Table API 接入"
+}

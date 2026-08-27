@@ -1,0 +1,42 @@
+{
+  "style": 1,
+  "width": 1200,
+  "height": 780,
+  "title": "实时 DataStream 核心类结构",
+  "subtitle": "类名保持通用，10 秒作为 RealtimeJobConfig 参数；LastClick 常量保持 6 小时",
+  "containers": [
+    {"x": 34, "y": 100, "width": 1132, "height": 600, "label": "CN.EDU.USTC.LAKEHOUSE.REALTIME", "subtitle": "基于实际 Java 实现"}
+  ],
+  "nodes": [
+    {"id": "config", "x": 72, "y": 154, "width": 250, "height": 112, "kind": "double_rect", "type_label": "CONFIG", "label": "RealtimeJobConfig", "sublabel": "windowSeconds = 10\noutOfOrderness / idleness", "fill": "#eff6ff", "stroke": "#93c5fd", "flat": true},
+    {"id": "util", "x": 72, "y": 330, "width": 250, "height": 112, "type_label": "UTILITY", "label": "FlussTableUtil", "sublabel": "Catalog / TableEnvironment\nscanHint / checkpoint", "fill": "#f0fdfa", "stroke": "#5eead4", "flat": true},
+    {"id": "logjob", "x": 400, "y": 138, "width": 300, "height": 104, "type_label": "JOB", "label": "DwdLogDataStreamJob", "sublabel": "Fluss Table → DataStream → Fluss", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "logfn", "x": 820, "y": 138, "width": 290, "height": 104, "type_label": "PROCESS FUNCTION", "label": "DwdLogProcessFunction", "sublabel": "parse / validate / side output", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
+    {"id": "attribjob", "x": 400, "y": 318, "width": 300, "height": 104, "type_label": "JOB", "label": "DwdOrderAttributionJob", "sublabel": "click.connect(order).process(...) ", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "attribfn", "x": 820, "y": 318, "width": 290, "height": 104, "type_label": "KEYED CO-PROCESS", "label": "LastClickAttributionFunction", "sublabel": "ValueState + ListState / timer / 6 hours", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
+    {"id": "metricjob", "x": 400, "y": 498, "width": 300, "height": 104, "type_label": "JOB", "label": "RealtimeAdMetricJob", "sublabel": "signed delta / 10s TUMBLE", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "agg", "x": 820, "y": 498, "width": 290, "height": 104, "type_label": "AGGREGATE", "label": "RealtimeMetricAggregateFunction", "sublabel": "Incremental + WindowResult", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
+    {"id": "models", "x": 388, "y": 642, "width": 730, "height": 76, "type_label": "POJO MODEL", "label": "RawLog · ParsedAdEvent · AdClickEvent · OrderDetail · AttributedOrder · MetricDelta · RealtimeMetric", "sublabel": "通用 windowStart / windowEnd 字段，不把窗口长度写入类名", "fill": "#f0fdf4", "stroke": "#86efac", "flat": true}
+  ],
+  "arrows": [
+    {"source": "config", "target": "logjob", "label": "config", "flow": "control"},
+    {"source": "config", "target": "attribjob", "label": "config", "flow": "control"},
+    {"source": "config", "target": "metricjob", "label": "10s", "flow": "control"},
+    {"source": "util", "target": "logjob", "label": "context", "flow": "read"},
+    {"source": "util", "target": "attribjob", "label": "context", "flow": "read"},
+    {"source": "util", "target": "metricjob", "label": "context", "flow": "read"},
+    {"source": "logjob", "target": "logfn", "label": "uses", "flow": "neutral"},
+    {"source": "attribjob", "target": "attribfn", "label": "uses", "flow": "neutral"},
+    {"source": "metricjob", "target": "agg", "label": "uses", "flow": "neutral"},
+    {"source": "logfn", "target": "models", "label": "emits", "flow": "data"},
+    {"source": "attribfn", "target": "models", "label": "emits", "flow": "data"},
+    {"source": "agg", "target": "models", "label": "emits", "flow": "data"}
+  ],
+  "legend": [
+    {"flow": "control", "label": "配置依赖"},
+    {"flow": "read", "label": "运行上下文"},
+    {"flow": "neutral", "label": "调用关系"},
+    {"flow": "data", "label": "模型输出"}
+  ],
+  "legend_position": "bottom-left"
+}

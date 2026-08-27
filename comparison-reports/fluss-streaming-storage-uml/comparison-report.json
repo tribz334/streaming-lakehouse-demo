@@ -1,0 +1,58 @@
+{
+  "reference_size": [
+    1080,
+    365
+  ],
+  "candidate_size": [
+    1365,
+    733
+  ],
+  "reference_content_bbox": [
+    0,
+    0,
+    1080,
+    365
+  ],
+  "candidate_content_bbox": [
+    0,
+    1,
+    1365,
+    733
+  ],
+  "reference_content_size": [
+    1080,
+    365
+  ],
+  "candidate_content_size": [
+    1365,
+    732
+  ],
+  "bbox_aspect_delta": 1.0941500112283853,
+  "content_area_delta": 1.534703196347032,
+  "canvas_width_delta": 0.2638888888888889,
+  "canvas_height_delta": 1.0082191780821919,
+  "mae": 209.0335235595703,
+  "rmse": 216.09908028494706,
+  "ssim": NaN,
+  "foreground_iou": 0.25090062928088813,
+  "edge_iou": 0.0366067912640475,
+  "worst_tile_mae": 242.40879821777344,
+  "mode": "semantic",
+  "pass": false,
+  "failures": [
+    "mae=209 > 45",
+    "rmse=216.1 > 78",
+    "bbox_aspect_delta=1.094 > 0.16",
+    "content_area_delta=1.535 > 0.45",
+    "worst_tile_mae=242.4 > 120",
+    "foreground_iou=0.2509 < 0.45",
+    "edge_iou=0.03661 < 0.16"
+  ],
+  "reference": "C:\\Users\\ZhuZezhao\\AppData\\Local\\Temp\\codex-clipboard-cd8fb25d-156f-428b-a87f-a0bbc7e8aa33.png",
+  "candidate": "D:\\0_\u4e2d\u56fd\u79d1\u5b66\u6280\u672f\u5927\u5b66\\ustcthesis\\streaming-lakehouse-demo\\diagrams\\exports\\fluss-streaming-storage-uml.png",
+  "artifacts": {
+    "diff_heatmap": "D:\\0_\u4e2d\u56fd\u79d1\u5b66\u6280\u672f\u5927\u5b66\\ustcthesis\\streaming-lakehouse-demo\\comparison-reports\\fluss-streaming-storage-uml\\diff-heatmap.png",
+    "foreground_overlay": "D:\\0_\u4e2d\u56fd\u79d1\u5b66\u6280\u672f\u5927\u5b66\\ustcthesis\\streaming-lakehouse-demo\\comparison-reports\\fluss-streaming-storage-uml\\foreground-overlay.png",
+    "side_by_side": "D:\\0_\u4e2d\u56fd\u79d1\u5b66\u6280\u672f\u5927\u5b66\\ustcthesis\\streaming-lakehouse-demo\\comparison-reports\\fluss-streaming-storage-uml\\side-by-side.png"
+  }
+}

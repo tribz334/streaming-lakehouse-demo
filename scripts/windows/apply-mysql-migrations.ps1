@@ -13,7 +13,7 @@ $migrationFiles = @(
   "mysql/migrations/034_repair_utf8_master_data.sql",
   "mysql/migrations/035_remove_order_ad_source_fields.sql",
   "mysql/migrations/036_simplify_order_lifecycle.sql",
-  "mysql/migrations/037_rename_unit_delivery_type.sql"
+  "mysql/migrations/038_unit_classification.sql"
 )
 $deadline = (Get-Date).AddMinutes(2)
 do {

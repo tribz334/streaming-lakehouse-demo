@@ -125,10 +125,10 @@ INSERT INTO campaign_seed VALUES
 (3903,39,'理想秋季长途',84000,'running')
 ;
 INSERT INTO campaign_info (
-  campaign_id, campaign_name, advertiser_id, status, market_goal, ad_type,
+  campaign_id, campaign_name, advertiser_id, status, market_goal,
   trading_mode, budget, daily_budget, created_at
 )
-SELECT campaign_id, campaign_name, advertiser_id, 4, 4, 1, 0,
+SELECT campaign_id, campaign_name, advertiser_id, 4, 4, 0,
   budget_yuan * 100000, GREATEST(100000, budget_yuan * 10000),
   TIMESTAMP('2026-05-01 00:00:00')
 FROM campaign_seed
@@ -220,13 +220,14 @@ INSERT INTO unit_seed VALUES
 (390302,3903,'理想长途单元','CPC',5.2000,'running')
 ;
 INSERT INTO unit_info (
-  unit_id, unit_name, campaign_id, status, is_closed, delivery_type,
+  unit_id, unit_name, campaign_id, status, is_closed, placement_type, ad_type,
   search_keyword, product_id, landing_page_url, audience, start_date,
   end_date, daily_budget, bid_type, bid, created_at
 )
 SELECT unit_id, unit_name, campaign_id, 0,
   CASE WHEN MOD(unit_id, 4)=0 THEN 1 ELSE 0 END,
-  CASE MOD(unit_id, 3) WHEN 0 THEN 1 WHEN 1 THEN 2 ELSE 3 END,
+  MOD(unit_id, 6) + 1,
+  MOD(unit_id, 4) + 1,
   JSON_ARRAY(unit_name), NULL,
   CONCAT('https://landing.ustc.example/unit/', unit_id),
   JSON_OBJECT('region', 'all', 'age', JSON_ARRAY('18-24','25-34')),
@@ -236,6 +237,7 @@ SELECT unit_id, unit_name, campaign_id, 0,
 FROM unit_seed
 ON DUPLICATE KEY UPDATE
   unit_name=VALUES(unit_name), bid_type=VALUES(bid_type), bid=VALUES(bid),
+  placement_type=VALUES(placement_type), ad_type=VALUES(ad_type),
   updated_at=CURRENT_TIMESTAMP;
 DROP TEMPORARY TABLE unit_seed;
 

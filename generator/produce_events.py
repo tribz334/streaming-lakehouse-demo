@@ -45,8 +45,8 @@ MEDIA_PROFILES = {
     "toutiao": (14, 0.88, 0.90, 0.86),
     "weibo": (10, 0.91, 0.86, 0.98),
 }
-COMMERCE_SCENES = ["live", "short_video", "shop", "external"]
-COMMERCE_SCENE_PROFILES = {
+COMMERCE_CHANNELS = ["live", "short_video", "shop", "external"]
+COMMERCE_CHANNEL_PROFILES = {
     # traffic weight, click lift, conversion lift, average-order-value lift
     "live": (35, 1.12, 1.22, 1.05),
     "short_video": (45, 1.18, 0.96, 0.82),
@@ -258,13 +258,13 @@ def make_event(keys, event_time=None, rng=random):
     moment = event_time or datetime.now(TZ)
     key = choose_key(keys, rng)
     media = rng.choices(MEDIA, weights=[MEDIA_PROFILES[name][0] for name in MEDIA], k=1)[0]
-    commerce_scene = rng.choices(
-        COMMERCE_SCENES,
-        weights=[COMMERCE_SCENE_PROFILES[name][0] for name in COMMERCE_SCENES],
+    commerce_channel = rng.choices(
+        COMMERCE_CHANNELS,
+        weights=[COMMERCE_CHANNEL_PROFILES[name][0] for name in COMMERCE_CHANNELS],
         k=1,
     )[0]
     _, media_click, media_conversion, media_cost = MEDIA_PROFILES[media]
-    _, scene_click, scene_conversion, scene_order_value = COMMERCE_SCENE_PROFILES[commerce_scene]
+    _, channel_click, channel_conversion, channel_order_value = COMMERCE_CHANNEL_PROFILES[commerce_channel]
     industry_click, industry_conversion, average_order = INDUSTRY_PROFILES.get(
         key.get("industry"), (1.0, 1.0, 150.0)
     )
@@ -274,11 +274,11 @@ def make_event(keys, event_time=None, rng=random):
     objective_conversion = 1.20 if promotion_goal in ("电商下单推广", "销售线索收集") else 0.90
     click_rate = min(
         0.18,
-        0.075 * media_click * scene_click * industry_click * objective_click * advertiser_factor,
+        0.075 * media_click * channel_click * industry_click * objective_click * advertiser_factor,
     )
     conversion_rate = min(
         0.32,
-        0.14 * media_conversion * scene_conversion * industry_conversion * objective_conversion,
+        0.14 * media_conversion * channel_conversion * industry_conversion * objective_conversion,
     )
     order_rate = min(0.72, 0.46 * industry_conversion * objective_conversion)
     event_type = rng.choices(
@@ -287,7 +287,7 @@ def make_event(keys, event_time=None, rng=random):
                  click_rate * conversion_rate * order_rate],
         k=1,
     )[0]
-    if commerce_scene == "external" and event_type == "order":
+    if commerce_channel == "external" and event_type == "order":
         event_type = "conversion"
     gmv = 0.0
     order_id = None
@@ -300,7 +300,7 @@ def make_event(keys, event_time=None, rng=random):
         gmv = round(max(
             9.9,
             rng.lognormvariate(
-                math.log(average_order * scene_order_value * promotion_lift),
+                math.log(average_order * channel_order_value * promotion_lift),
                 0.48,
             ),
         ), 2)
@@ -316,7 +316,7 @@ def make_event(keys, event_time=None, rng=random):
         "unit_id": key["unit_id"],
         "creative_id": key["creative_id"],
         "media": media,
-        "commerce_scene": commerce_scene,
+        "commerce_channel": commerce_channel,
         "traffic_type": "paid",
         "region": rng.choices(REGIONS, weights=[8, 2, 5, 3, 2, 5, 2, 2, 9, 8, 8, 5, 4, 3, 7, 7, 5, 5, 10, 4, 2, 4, 7, 3, 3, 1, 4, 2, 1, 1, 2], k=1)[0],
         "user_id": anonymous_user_id(f"{rng.randint(1, 12000):05d}"),
@@ -348,7 +348,7 @@ def attach_attribution_journey(order_event, rng, bucket=None, stable_suffix=None
         order_event["traffic_type"] = "paid"
     else:
         order_event["traffic_type"] = "organic"
-        order_event["commerce_scene"] = "shop"
+        order_event["commerce_channel"] = "shop"
     return click
 
 
@@ -429,9 +429,6 @@ def send_event(event):
             "creative_id": int(event["creative_id"]),
             "product_id": int(event.get("product_id") or 0),
             "slot_id": int(event.get("slot_id") or 0),
-            "scene": event["commerce_scene"]
-            if event["commerce_scene"] in {"live", "short_video"}
-            else "ecommerce",
             "ts": event_ts,
         }],
         "ts": event_ts,
@@ -459,12 +456,12 @@ def send_attribution_journey(click_event, rng):
         send_event(click_event)
 
 
-def make_live_attribution_order(keys, scene, sequence, rng):
+def make_live_attribution_order(keys, channel, sequence, rng):
     """Guarantee fresh closed-loop GMV for the rolling two-hour dashboard."""
     order = make_event(keys, event_time=datetime.now(TZ), rng=rng)
     order["order_id"] = next_bigint_id(datetime.now(TZ))
     order["event_type"] = "order"
-    order["commerce_scene"] = scene
+    order["commerce_channel"] = channel
     order["traffic_type"] = "paid"
     order["spend"] = 0.0
     order["gmv"] = round(rng.uniform(120.0, 1800.0), 2)
@@ -480,7 +477,7 @@ def make_demo_attribution_order(keys, day, bucket, index, rng):
     order["event_id"] = stable_id
     order["order_id"] = stable_id + 10_000_000_000_000
     order["event_type"] = "order"
-    order["commerce_scene"] = COMMERCE_SCENES[index % 3]
+    order["commerce_channel"] = COMMERCE_CHANNELS[index % 3]
     order["spend"] = 0.0
     order["gmv"] = round(80.0 + index * 35.0 + stable_factor(str(stable_id), 0.0, 120.0), 2)
     click = attach_attribution_journey(order, rng, bucket=bucket, stable_suffix=stable_id)
@@ -620,9 +617,9 @@ def make_fraud_burst(keys):
             "unit_id": key["unit_id"],
             "creative_id": key["creative_id"],
             "media": media,
-            "commerce_scene": random.choices(
-                COMMERCE_SCENES,
-                weights=[COMMERCE_SCENE_PROFILES[name][0] for name in COMMERCE_SCENES],
+            "commerce_channel": random.choices(
+                COMMERCE_CHANNELS,
+                weights=[COMMERCE_CHANNEL_PROFILES[name][0] for name in COMMERCE_CHANNELS],
                 k=1,
             )[0],
             "traffic_type": "paid",
@@ -691,9 +688,9 @@ def main():
         produced += 1
 
         if LIVE_ORDER_EVERY > 0 and produced % LIVE_ORDER_EVERY == 0:
-            scene_index = (produced // LIVE_ORDER_EVERY - 1) % len(COMMERCE_SCENES)
+            channel_index = (produced // LIVE_ORDER_EVERY - 1) % len(COMMERCE_CHANNELS)
             live_order, live_click = make_live_attribution_order(
-                keys, COMMERCE_SCENES[scene_index], produced // LIVE_ORDER_EVERY, rng
+                keys, COMMERCE_CHANNELS[channel_index], produced // LIVE_ORDER_EVERY, rng
             )
             send_attribution_journey(live_click, rng)
             send_event(live_order)
