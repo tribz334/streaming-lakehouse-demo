@@ -50,9 +50,10 @@ CREATE TEMPORARY TABLE mysql_product (
 
 CREATE TEMPORARY TABLE mysql_bill (
   bill_id BIGINT,advertiser_id BIGINT,campaign_id BIGINT,unit_id BIGINT,creative_id BIGINT,
-  user_id BIGINT,slot_id BIGINT,billing_type TINYINT,cost BIGINT,bill_time TIMESTAMP(3),
+  user_id BIGINT,slot_id BIGINT,billing_type TINYINT,commerce_channel STRING,cost BIGINT,
+  bill_time TIMESTAMP(3),
   updated_at TIMESTAMP(3),PRIMARY KEY(bill_id) NOT ENFORCED
-) WITH ('connector'='mysql-cdc','hostname'='mysql','port'='3306','username'='root','password'='root','database-name'='ad_ods','table-name'='bill_detail','server-id'='5481-5488','server-time-zone'='UTC','scan.startup.mode'='initial');
+) WITH ('connector'='mysql-cdc','hostname'='mysql','port'='3306','username'='root','password'='root','database-name'='ad_ods','table-name'='bill_info','server-id'='5481-5488','server-time-zone'='UTC','scan.startup.mode'='initial');
 
 CREATE TEMPORARY TABLE mysql_order (
   order_id BIGINT,user_id BIGINT,product_id BIGINT,shop_id BIGINT,
@@ -61,7 +62,7 @@ CREATE TEMPORARY TABLE mysql_order (
   order_status INT,create_time TIMESTAMP(3),cancel_time TIMESTAMP(3),pay_time TIMESTAMP(3),
   confirm_time TIMESTAMP(3),refund_time TIMESTAMP(3),updated_at TIMESTAMP(3),
   PRIMARY KEY(order_id) NOT ENFORCED
-) WITH ('connector'='mysql-cdc','hostname'='mysql','port'='3306','username'='root','password'='root','database-name'='ad_ods','table-name'='order_detail','server-id'='5491-5498','server-time-zone'='UTC','scan.startup.mode'='initial');
+) WITH ('connector'='mysql-cdc','hostname'='mysql','port'='3306','username'='root','password'='root','database-name'='ad_ods','table-name'='order_info','server-id'='5491-5498','server-time-zone'='UTC','scan.startup.mode'='initial');
 
 EXECUTE STATEMENT SET
 BEGIN
@@ -84,35 +85,39 @@ BEGIN
   FROM mysql_unit u LEFT JOIN mysql_campaign c ON u.campaign_id=c.campaign_id;
 
   INSERT INTO fluss.ad_dw.dim_creative_df
-  SELECT cr.creative_id,cr.creative_name,cr.unit_id,u.unit_name,cr.status,cr.creative_mode,
-    cr.material_mode,cr.creative_title,cr.creative_category,
+  SELECT cr.creative_id,cr.creative_name,cr.unit_id,u.unit_name,u.campaign_id,c.advertiser_id,
+    u.ad_type,u.placement_type,CAST(u.is_closed AS TINYINT),
+    cr.creative_mode,cr.material_mode,cr.creative_title,cr.creative_category,
     JSON_QUERY(cr.creative_tags,'$' RETURNING ARRAY<STRING>),cr.creative_text,
-    cr.creative_image_urls,cr.creative_video_id,cr.monitoring_url,
-    CAST(cr.created_at AS STRING),CAST(cr.updated_at AS STRING)
-  FROM mysql_creative cr LEFT JOIN mysql_unit u ON cr.unit_id=u.unit_id;
+    cr.creative_image_urls,cr.creative_video_id,cr.monitoring_url,cr.status,
+    CAST(cr.created_at AS STRING),CAST(cr.updated_at AS STRING),DATE_FORMAT(cr.updated_at,'yyyyMMdd')
+  FROM mysql_creative cr
+  LEFT JOIN mysql_unit u ON cr.unit_id=u.unit_id
+  LEFT JOIN mysql_campaign c ON u.campaign_id=c.campaign_id;
 
-  INSERT INTO fluss.ad_dw.dim_user_df
+  INSERT INTO fluss.ad_dw.dim_user
   SELECT uid,user_name,gender,phone_hash,email,user_level,CAST(birthday AS STRING),status,
     DATE_FORMAT(created_at,'yyyy-MM-dd'),'9999-12-31',CAST(created_at AS STRING),
     CAST(updated_at AS STRING) FROM mysql_user;
 
-  INSERT INTO fluss.ad_dw.dim_shop_df
+  INSERT INTO fluss.ad_dw.dim_shop
   SELECT shop_id,shop_name,shop_type,status,main_category_id,main_category_name,
     shop_qualification_type,credit_code,contact_person,contact_phone,
     DATE_FORMAT(created_at,'yyyy-MM-dd'),'9999-12-31',CAST(created_at AS STRING),
     CAST(updated_at AS STRING) FROM mysql_shop;
 
-  INSERT INTO fluss.ad_dw.dim_product_df
+  INSERT INTO fluss.ad_dw.dim_product
   SELECT p.product_id,p.product_name,p.shop_id,s.shop_name,p.price,
     DATE_FORMAT(p.created_at,'yyyy-MM-dd'),'9999-12-31',CAST(p.created_at AS STRING),
     CAST(p.updated_at AS STRING) FROM mysql_product p LEFT JOIN mysql_shop s ON p.shop_id=s.shop_id;
 
-  INSERT INTO fluss.ad_dw.ods_mysql_bill_di
-  SELECT bill_id,advertiser_id,campaign_id,unit_id,creative_id,user_id,slot_id,cost,
-    CAST(bill_time AS STRING),CAST(updated_at AS STRING),DATE_FORMAT(bill_time,'yyyy-MM-dd')
+  INSERT INTO fluss.ad_dw.ods_mysql_bill_info
+  SELECT bill_id,advertiser_id,campaign_id,unit_id,creative_id,user_id,slot_id,billing_type,
+    commerce_channel,cost,CAST(bill_time AS STRING),CAST(updated_at AS STRING),
+    UNIX_TIMESTAMP(bill_time)*1000,DATE_FORMAT(bill_time,'yyyyMMdd'),DATE_FORMAT(bill_time,'HH')
   FROM mysql_bill;
 
-  INSERT INTO fluss.ad_dw.ods_mysql_order_acc
+  INSERT INTO fluss.ad_dw.ods_mysql_order_info
   SELECT order_id,user_id,product_id,shop_id,CAST(product_price AS BIGINT),
     product_num,CAST(total_amount AS BIGINT),payment_method,receiver_name,receiver_phone,
     shipping_address,tracking_number,order_status,CAST(create_time AS STRING),

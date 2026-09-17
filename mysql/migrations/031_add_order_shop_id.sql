@@ -6,12 +6,12 @@ CREATE PROCEDURE migrate_order_shop_031()
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'ad_ods' AND table_name = 'order_detail' AND column_name = 'shop_id'
+    WHERE table_schema = 'ad_ods' AND table_name = 'order_info' AND column_name = 'shop_id'
   ) THEN
-    ALTER TABLE order_detail ADD COLUMN shop_id BIGINT NULL AFTER product_id;
+    ALTER TABLE order_info ADD COLUMN shop_id BIGINT NULL AFTER product_id;
   END IF;
 
-  UPDATE order_detail o
+  UPDATE order_info o
   LEFT JOIN product_info p ON p.product_id = o.product_id
   SET o.shop_id = p.shop_id
   WHERE o.shop_id IS NULL;

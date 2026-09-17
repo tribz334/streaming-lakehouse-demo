@@ -20,7 +20,8 @@ ORDER_WEIGHTS = (45, 30, 12, 8, 5)
 CHANGE_TYPES = ("BILL", "ORDER", "DIM")
 CHANGE_WEIGHTS = (60, 38, 2)
 MEDIA = ("douyin", "kuaishou", "weibo", "toutiao")
-COMMERCE_CHANNELS = ("ecommerce", "short_video", "live")
+COMMERCE_CHANNELS = ("ecommerce", "short_video", "live", "external")
+COMMERCE_CHANNEL_WEIGHTS = (38, 31, 23, 8)
 
 
 def db_now() -> datetime:
@@ -124,9 +125,9 @@ class MySQLChangeGenerator:
             ):
                 cur.execute(f"SELECT {key} FROM {table}")
                 self.dim_targets[table] = [int(row[key]) for row in cur.fetchall()]
-            cur.execute("SELECT COALESCE(MAX(order_id),0) AS max_id FROM order_detail")
+            cur.execute("SELECT COALESCE(MAX(order_id),0) AS max_id FROM order_info")
             max_order = int(cur.fetchone()["max_id"])
-            cur.execute("SELECT COALESCE(MAX(bill_id),0) AS max_id FROM bill_detail")
+            cur.execute("SELECT COALESCE(MAX(bill_id),0) AS max_id FROM bill_info")
             max_bill = int(cur.fetchone()["max_id"])
         if not self.users or not self.products or not self.ad_keys:
             raise RuntimeError("MySQL seed data is incomplete: users/products/ad hierarchy required")
@@ -143,7 +144,7 @@ class MySQLChangeGenerator:
             cur.execute(
                 """
                 SELECT order_id, order_status, create_time, pay_time, confirm_time
-                FROM order_detail
+                FROM order_info
                 WHERE order_status IN (1,3,4) AND create_time >= %s
                 ORDER BY create_time DESC LIMIT 20000
                 """,
@@ -185,7 +186,7 @@ class MySQLChangeGenerator:
         with self.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO order_detail
+                INSERT INTO order_info
                   (order_id,user_id,product_id,shop_id,product_price,product_num,
                    total_amount,payment_method,receiver_name,receiver_phone,
                    shipping_address,tracking_number,order_status,create_time,
@@ -221,7 +222,7 @@ class MySQLChangeGenerator:
         state = self.rng.choice(candidates)
         with self.cursor() as cur:
             cur.execute(
-                "UPDATE order_detail SET order_status=3,pay_time=%s "
+                "UPDATE order_info SET order_status=3,pay_time=%s "
                 "WHERE order_id=%s AND order_status=1 AND pay_time IS NULL "
                 "AND cancel_time IS NULL",
                 (now, state.order_id),
@@ -245,7 +246,7 @@ class MySQLChangeGenerator:
         state = self.rng.choice(candidates)
         with self.cursor() as cur:
             cur.execute(
-                "UPDATE order_detail SET order_status=2,cancel_time=%s "
+                "UPDATE order_info SET order_status=2,cancel_time=%s "
                 "WHERE order_id=%s AND order_status=1 AND pay_time IS NULL "
                 "AND cancel_time IS NULL",
                 (now, state.order_id),
@@ -266,7 +267,7 @@ class MySQLChangeGenerator:
         state = self.rng.choice(candidates)
         with self.cursor() as cur:
             cur.execute(
-                "UPDATE order_detail SET order_status=4,confirm_time=%s,"
+                "UPDATE order_info SET order_status=4,confirm_time=%s,"
                 "tracking_number=%s WHERE order_id=%s AND order_status=3 "
                 "AND confirm_time IS NULL AND refund_time IS NULL",
                 (now, f"SF{state.order_id}", state.order_id),
@@ -295,7 +296,7 @@ class MySQLChangeGenerator:
         state, prior_status = self.rng.choice(candidates)
         with self.cursor() as cur:
             cur.execute(
-                "UPDATE order_detail SET order_status=5,refund_time=%s "
+                "UPDATE order_info SET order_status=5,refund_time=%s "
                 "WHERE order_id=%s AND order_status=%s AND pay_time IS NOT NULL "
                 "AND refund_time IS NULL",
                 (now, state.order_id, prior_status),
@@ -335,7 +336,7 @@ class MySQLChangeGenerator:
         with self.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO bill_detail
+                INSERT INTO bill_info
                   (bill_id,advertiser_id,campaign_id,unit_id,creative_id,user_id,
                    slot_id,billing_type,media,commerce_channel,cost,bill_time)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -344,7 +345,8 @@ class MySQLChangeGenerator:
                     self.bill_ids.next(), int(key["advertiser_id"]),
                     int(key["campaign_id"]), int(key["unit_id"]),
                     int(key["creative_id"]), uid, self.rng.randint(101, 512),
-                    billing_type, self.rng.choice(MEDIA), self.rng.choice(COMMERCE_CHANNELS),
+                    billing_type, self.rng.choice(MEDIA),
+                    self.rng.choices(COMMERCE_CHANNELS, COMMERCE_CHANNEL_WEIGHTS, k=1)[0],
                     cost, db_now(),
                 ),
             )
@@ -434,15 +436,29 @@ class MySQLChangeGenerator:
             f"duration={'unlimited' if self.duration is None else f'{self.duration:g}s'}",
             flush=True,
         )
+        # Rates below one change per second use a longer scheduling window.  The
+        # previous one-second window clamped the target to one change, which made
+        # a requested rate such as one change per hour behave as one per second.
+        window_duration = max(1.0, 1.0 / self.rate)
         next_window = time.monotonic()
         while self.running:
             elapsed = time.monotonic() - self.started_at
             if self.duration is not None and elapsed >= self.duration:
                 break
             window_start = next_window
-            window_end = window_start + 1.0
-            target = max(1, round(self.rate * self.rng.uniform(0.88, 1.12)))
-            offsets = sorted(self.rng.uniform(0.0, 0.94) for _ in range(target))
+            window_end = window_start + window_duration
+            target = max(
+                1,
+                round(
+                    self.rate
+                    * window_duration
+                    * self.rng.uniform(0.88, 1.12)
+                ),
+            )
+            offsets = sorted(
+                self.rng.uniform(0.0, window_duration * 0.94)
+                for _ in range(target)
+            )
             for offset in offsets:
                 if not self.running:
                     break

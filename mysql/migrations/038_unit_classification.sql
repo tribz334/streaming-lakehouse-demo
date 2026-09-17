@@ -38,8 +38,24 @@ SET @add_placement_type = (
 );
 PREPARE stmt FROM @add_placement_type; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE unit_info MODIFY COLUMN placement_type INT NOT NULL DEFAULT 6,
-  MODIFY COLUMN ad_type INT NOT NULL DEFAULT 4;
+-- MODIFY COLUMN drops attributes that are not restated. Preserve whether this
+-- database already uses the thesis placement mapping so migration 039 can
+-- distinguish a fresh schema from a legacy one.
+SET @placement_comment_038 = (
+  SELECT CASE
+    WHEN column_comment LIKE '%1-feed,2-search,3-splash%'
+      THEN '1-feed,2-search,3-splash,4-rewarded,5-banner,6-other'
+    ELSE '1-search,2-splash,3-feed,4-rewarded,5-banner,6-other'
+  END
+  FROM information_schema.columns
+  WHERE table_schema='ad_ods' AND table_name='unit_info' AND column_name='placement_type'
+);
+SET @modify_unit_classification_038 = CONCAT(
+  'ALTER TABLE unit_info MODIFY COLUMN placement_type INT NOT NULL DEFAULT 6 COMMENT ',
+  QUOTE(@placement_comment_038),
+  ', MODIFY COLUMN ad_type INT NOT NULL DEFAULT 4'
+);
+PREPARE stmt FROM @modify_unit_classification_038; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 UPDATE unit_info SET placement_type=6 WHERE placement_type NOT BETWEEN 1 AND 6;
 UPDATE unit_info SET ad_type=4 WHERE ad_type NOT BETWEEN 1 AND 4;
 
@@ -61,7 +77,7 @@ SET @drop_campaign_ad_type = (
 PREPARE stmt FROM @drop_campaign_ad_type; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @rename_commerce_channel = (
-  SELECT IF(EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='ad_ods' AND table_name='bill_detail' AND column_name='commerce_scene'),
-    'ALTER TABLE bill_detail RENAME COLUMN commerce_scene TO commerce_channel','SELECT 1')
+  SELECT IF(EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='ad_ods' AND table_name='bill_info' AND column_name='commerce_scene'),
+    'ALTER TABLE bill_info RENAME COLUMN commerce_scene TO commerce_channel','SELECT 1')
 );
 PREPARE stmt FROM @rename_commerce_channel; EXECUTE stmt; DEALLOCATE PREPARE stmt;

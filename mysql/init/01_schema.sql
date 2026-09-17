@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS unit_info (
   unit_name VARCHAR(128) NOT NULL,
   campaign_id BIGINT NOT NULL,
   status INT NOT NULL DEFAULT 0,
-  is_closed INT NOT NULL DEFAULT 0,
-  placement_type INT NOT NULL DEFAULT 6 COMMENT '1-search,2-splash,3-feed,4-rewarded,5-banner,6-other',
+  is_closed INT NOT NULL DEFAULT 0 COMMENT '闭环投放标志；1表示该单元Cost计入闭环Cost',
+  placement_type INT NOT NULL DEFAULT 6 COMMENT '1-feed,2-search,3-splash,4-rewarded,5-banner,6-other',
   ad_type INT NOT NULL DEFAULT 4 COMMENT '1-short_video,2-live,3-image_text,4-other',
   search_keyword JSON NULL,
   product_id BIGINT NULL,
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS product_info (
   CONSTRAINT fk_product_shop FOREIGN KEY (shop_id) REFERENCES shop_info(shop_id)
 );
 
-CREATE TABLE IF NOT EXISTS order_detail (
+CREATE TABLE IF NOT EXISTS order_info (
   order_id BIGINT PRIMARY KEY,
   user_id BIGINT NOT NULL,
   product_id BIGINT NOT NULL,
@@ -128,12 +128,12 @@ CREATE TABLE IF NOT EXISTS order_detail (
   cancel_time TIMESTAMP NULL,
   pay_time TIMESTAMP NULL,
   confirm_time TIMESTAMP NULL,
-  refund_time TIMESTAMP NULL,
+  refund_time TIMESTAMP NULL COMMENT '退款完成时间；order_status=5时写入',
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT chk_order_status CHECK (order_status BETWEEN 1 AND 5)
 );
 
-CREATE TABLE IF NOT EXISTS bill_detail (
+CREATE TABLE IF NOT EXISTS bill_info (
   bill_id BIGINT PRIMARY KEY,
   advertiser_id BIGINT NOT NULL,
   campaign_id BIGINT NOT NULL,

@@ -7,14 +7,14 @@ CREATE CATALOG fluss WITH (
 USE CATALOG fluss;
 USE ad_dw;
 DROP TABLE IF EXISTS ads_realtime_metric_30s;
-DROP TABLE IF EXISTS ads_realtime_metric_10s;
+DROP TABLE IF EXISTS dws_ad_creative_10s;
 DROP TABLE IF EXISTS dws_ad_type_di;
 DROP TABLE IF EXISTS dws_placement_di;
-DROP TABLE IF EXISTS dws_advertiser_di;
-DROP TABLE IF EXISTS dws_campaign_di;
+DROP TABLE IF EXISTS dws_ad_advertiser_di;
+DROP TABLE IF EXISTS dws_ad_campaign_di;
 DROP TABLE IF EXISTS dwd_ad_event_dirty_di;
 DROP TABLE IF EXISTS dwd_ad_bill_di;
-DROP TABLE IF EXISTS dwd_ad_order_acc;
+DROP TABLE IF EXISTS dwd_order_acc;
 DROP TABLE IF EXISTS dwd_ad_order_event_di;
 DROP TABLE IF EXISTS dwd_ad_order_di;
 
@@ -28,13 +28,13 @@ CREATE CATALOG paimon WITH (
 USE CATALOG paimon;
 USE ad_dw;
 DROP TABLE IF EXISTS ads_realtime_metric_30s;
-DROP TABLE IF EXISTS ads_realtime_metric_10s;
+DROP TABLE IF EXISTS dws_ad_creative_10s;
 DROP TABLE IF EXISTS dws_ad_type_di;
 DROP TABLE IF EXISTS dws_placement_di;
-DROP TABLE IF EXISTS dws_advertiser_di;
-DROP TABLE IF EXISTS dws_campaign_di;
+DROP TABLE IF EXISTS dws_ad_advertiser_di;
+DROP TABLE IF EXISTS dws_ad_campaign_di;
 DROP TABLE IF EXISTS dwd_ad_event_dirty_di;
 DROP TABLE IF EXISTS dwd_ad_bill_di;
-DROP TABLE IF EXISTS dwd_ad_order_acc;
+DROP TABLE IF EXISTS dwd_order_acc;
 DROP TABLE IF EXISTS dwd_ad_order_event_di;
 DROP TABLE IF EXISTS dwd_ad_order_di;

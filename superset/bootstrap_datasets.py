@@ -5,6 +5,7 @@ BASE_METRICS = [
     "cost", "closed_cost", "pay_order_count", "refund_order_count",
     "pay_order_gmv", "refund_order_gmv",
 ]
+MONEY_METRICS = {"cost", "closed_cost", "pay_order_gmv", "refund_order_gmv"}
 CLASSIFIED_ORDER_METRICS = [
     f"{category}_{metric}"
     for category in (
@@ -19,6 +20,19 @@ ADS_CLASSIFIED_METRICS = [
     "search_pay_order_gmv", "splash_pay_order_gmv", "feed_pay_order_gmv",
     "rewarded_pay_order_gmv", "banner_pay_order_gmv", "other_placement_pay_order_gmv",
 ]
+OFFLINE_ADS_CLASSIFIED_METRICS = [
+    metric for metric in ADS_CLASSIFIED_METRICS
+    if metric != "other_ad_type_pay_order_gmv"
+]
+
+
+def is_money_metric(metric):
+    return metric in MONEY_METRICS or metric.endswith("_gmv")
+
+
+def raw_metric_expression(metric):
+    expression = f"SUM({metric})"
+    return f"{expression}/100000.0" if is_money_metric(metric) else expression
 
 
 def additive_metrics(entity):
@@ -38,7 +52,7 @@ def topic_columns(entity):
 
 def topic_metrics(entity=None):
     metrics = BASE_METRICS + (CLASSIFIED_ORDER_METRICS if entity in {"advertiser", "campaign"} else [])
-    return [("count", "COUNT(*)")] + [(f"total_{m}", f"SUM({m})") for m in metrics] + [
+    return [("count", "COUNT(*)")] + [(f"total_{m}", raw_metric_expression(m)) for m in metrics] + [
         ("ctr", "SUM(click_count)/NULLIF(SUM(impression_count),0)"),
         ("cvr", "SUM(conversion_count)/NULLIF(SUM(click_count),0)"),
         ("roas", "SUM(pay_order_gmv)/NULLIF(SUM(closed_cost),0)"),
@@ -57,31 +71,50 @@ for entity in ("advertiser", "campaign", "unit", "creative"):
     columns += [(f"{metric}_{window}", "BIGINT", False, False, False) for metric in metrics for window in ("1d", "7d", "30d", "lifetime")]
     DATASETS[f"v_dm_{entity}_df"] = {"main_dttm_col": "dt", "columns": columns, "metrics": [("count", "COUNT(*)")]}
 
-ads_columns = [(name, "BIGINT", False, False, False) for name in BASE_METRICS + ADS_CLASSIFIED_METRICS]
-ratio_metrics = [
-    ("ctr", "SUM(click_count)/NULLIF(SUM(impression_count),0)"),
-    ("cvr", "SUM(conversion_count)/NULLIF(SUM(click_count),0)"),
-    ("roas", "SUM(pay_order_gmv)/NULLIF(SUM(closed_cost),0)"),
-    ("realtime_roas", "SUM(pay_order_gmv)/NULLIF(SUM(closed_cost),0)"),
-]
-ads_metrics = [("count", "COUNT(*)")] + [(f"total_{m}", f"SUM({m})") for m in BASE_METRICS + ADS_CLASSIFIED_METRICS] + ratio_metrics
-DATASETS.update({
-    "v_realtime_metric": {
+def serving_columns(classified_metrics):
+    return [
+        (name, "DECIMAL(38,5)" if is_money_metric(name) else "BIGINT", False, False, False)
+        for name in BASE_METRICS + classified_metrics
+    ]
+
+
+def serving_metrics(classified_metrics, include_realtime_roas=False):
+    metrics = [("count", "COUNT(*)")] + [
+        (f"total_{metric}", f"SUM({metric})")
+        for metric in BASE_METRICS + classified_metrics
+    ] + [
+        ("ctr", "SUM(click_count)/NULLIF(SUM(impression_count),0)"),
+        ("cvr", "SUM(conversion_count)/NULLIF(SUM(click_count),0)"),
+        ("roas", "SUM(pay_order_gmv)/NULLIF(SUM(closed_cost),0)"),
+    ]
+    if include_realtime_roas:
+        metrics.append(("realtime_roas", "SUM(pay_order_gmv)/NULLIF(SUM(closed_cost),0)"))
+    return metrics
+
+
+def realtime_dataset():
+    return {
         "main_dttm_col": "window_start",
         "columns": [("window_start", "DATETIME", True, True, True), ("window_end", "DATETIME", True, True, True), ("dt", "DATE", True, True, True)]
-        + ads_columns + [("realtime_roas", "DOUBLE", False, False, False)],
-        "metrics": ads_metrics,
-    },
+        + serving_columns(ADS_CLASSIFIED_METRICS) + [("realtime_roas", "DOUBLE", False, False, False)],
+        "metrics": serving_metrics(ADS_CLASSIFIED_METRICS, include_realtime_roas=True),
+    }
+
+
+DATASETS.update({
+    "v_realtime_metric": realtime_dataset(),
+    "v_realtime_metric_latest": realtime_dataset(),
     "v_offline_metric": {
         "main_dttm_col": "dt",
         "columns": [("dt", "DATE", True, True, True)]
-        + ads_columns + [(name, "DOUBLE", False, False, False) for name in ("ctr", "cvr", "roas")],
-        "metrics": ads_metrics,
+        + serving_columns(OFFLINE_ADS_CLASSIFIED_METRICS)
+        + [(name, "DOUBLE", False, False, False) for name in ("ctr", "cvr", "roas")],
+        "metrics": serving_metrics(OFFLINE_ADS_CLASSIFIED_METRICS),
     },
     "v_order_attribution": {
         "main_dttm_col": "dt",
         "columns": [("dt", "DATE", True, True, True), ("order_id", "BIGINT", False, True, True), ("uid", "BIGINT", False, True, True),
-            ("product_id", "BIGINT", False, True, True), ("pay_time", "DATETIME", True, True, True), ("pay_order_gmv", "BIGINT", False, False, False),
+            ("product_id", "BIGINT", False, True, True), ("pay_time", "DATETIME", True, True, True), ("pay_order_gmv", "DECIMAL(38,5)", False, False, False),
             ("last_click_time", "DATETIME", True, True, True)] + [(f"{entity}_id", "BIGINT", False, True, True) for entity in ("advertiser", "campaign", "unit", "creative")]
             + [("placement_type", "INT", False, True, True), ("ad_type", "INT", False, True, True), ("attribute_period", "VARCHAR", False, True, True)],
         "metrics": [("pay_order_count", "COUNT(DISTINCT order_id)"), ("pay_order_gmv", "SUM(pay_order_gmv)")],
@@ -139,6 +172,7 @@ def main():
     app = create_app()
     with app.app_context():
         from superset import db
+        from superset.connectors.sqla.models import SqlaTable
         from superset.models.core import Database
         database = db.session.query(Database).filter_by(database_name="StarRocks").one()
         for obsolete in ("v_dws_placement_di", "v_dws_ad_type_di", "v_dm_ad_type_df", "v_dm_placement_df"):

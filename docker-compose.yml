@@ -111,7 +111,7 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 16
-        taskmanager.memory.process.size: 4096m
+        taskmanager.memory.process.size: 8192m
         taskmanager.memory.framework.off-heap.size: 512m
         parallelism.default: 1
         execution.checkpointing.interval: 30s
@@ -130,10 +130,14 @@ services:
     environment:
       GENERATOR_NODE_ID: ingest-node-1
       GENERATOR_RANDOM_SEED: 20260713
-      GENERATOR_HISTORY_DAYS: 0
+      GENERATOR_HISTORY_DAYS: 35
       GENERATOR_HISTORY_EVENTS_PER_DAY: 180
-      EVENT_INTERVAL_SECONDS: 0.25
+      GENERATOR_ATTRIBUTION_DEMO_ORDERS_PER_DAY: 15
+      # Keep the default demo traffic deliberately sparse: one SDK event per hour.
+      EVENT_INTERVAL_SECONDS: 3600
       GENERATOR_LIVE_ORDER_EVERY: 5
+      GENERATOR_MYSQL_RETRY_SECONDS: 2
+      GENERATOR_FLUSS_RETRY_SECONDS: 2
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -141,7 +145,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       FLUSS_BOOTSTRAP_SERVERS: fluss-coordinator:9123
       FLUSS_DATABASE: ad_dw
-      FLUSS_ODS_TABLE: ods_log_di
+      FLUSS_ODS_TABLE: ods_log
       FRAUD_INJECTION_ENABLED: "true"
       FRAUD_BURST_EVERY: 180
       FRAUD_BURST_SIZE: 36
@@ -160,7 +164,8 @@ services:
       context: .
       dockerfile: generator/Dockerfile
     image: ustc/event-generator:latest
-    command: ["python", "produce_mysql_changes.py", "--rate", "30"]
+    # The low-rate CDC generator is opt-in and emits about one row change per hour.
+    command: ["python", "produce_mysql_changes.py", "--rate", "0.0002777778"]
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
@@ -216,3 +221,23 @@ services:
       starrocks:
         condition: service_healthy
     command: ["/bin/bash", "-lc", "superset db upgrade && superset fab create-admin --username admin --firstname USTC --lastname Demo --email admin@example.com --password admin || true; superset init && superset set-database-uri -d StarRocks -u mysql://root@starrocks:9030/ad_ads && python /app/pythonpath/bootstrap_datasets.py && python /app/pythonpath/bootstrap_dashboard.py && superset run -h 0.0.0.0 -p 8088"]
+
+  dolphinscheduler:
+    build:
+      context: ./dolphinscheduler
+      dockerfile: Dockerfile
+    image: apache/dolphinscheduler-standalone-server:3.3.2
+    profiles: ["scheduler"]
+    environment:
+      MASTER_SERVER_LOAD_PROTECTION_ENABLED: "false"
+      WORKER_SERVER_LOAD_PROTECTION_ENABLED: "false"
+    ports: ["12345:12345", "25333:25333"]
+    volumes:
+      - ./dolphinscheduler:/workspace/dolphinscheduler
+      - .:/workspace/project
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      starrocks:
+        condition: service_healthy

@@ -4,8 +4,10 @@ USE CATALOG fluss;
 SHOW DATABASES;
 USE ad_dw;
 SHOW TABLES;
-DESCRIBE ads_realtime_metric_10s;
-DESCRIBE dwd_ad_order_acc;
+DESCRIBE dws_ad_creative_10s;
+DESCRIBE dwd_ad_event_di;
+DESCRIBE dwd_ad_bill_di;
+DESCRIBE dwd_order_acc;
 
 CREATE CATALOG paimon WITH ('type'='paimon','metastore'='filesystem','warehouse'='file:///warehouse/paimon');
 USE CATALOG paimon;

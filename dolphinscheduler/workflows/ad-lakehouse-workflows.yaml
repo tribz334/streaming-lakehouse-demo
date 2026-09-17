@@ -1,0 +1,84 @@
+project: ad_lakehouse
+version: 2026-09-current
+
+# This file documents the definitions registered through DolphinScheduler's
+# OpenAPI by scripts/windows/bootstrap-dolphinscheduler.ps1. It is deliberately
+# aligned with the current executable SQL/JAR layout; it is not a second runner.
+workflows:
+  - name: realtime_ad_pipeline
+    schedule: manual
+    layout: left-to-right
+    tasks:
+      - name: 检查基础服务
+        layer: source
+        command: bash scripts/linux/ds-realtime-task.sh check_core
+      - name: 初始化 Fluss 表
+        layer: ods
+        command: bash scripts/linux/ds-realtime-task.sh prepare_tables
+        depends_on: [检查基础服务]
+      - name: 启动 Paimon Tiering
+        layer: storage
+        command: bash scripts/linux/ds-realtime-task.sh start_tiering
+        depends_on: [初始化 Fluss 表]
+      - name: MySQL CDC 同步 DIM 与账单订单贴源数据
+        layer: dim-dwd
+        command: bash scripts/linux/ds-realtime-task.sh start_mysql_cdc
+        depends_on: [初始化 Fluss 表]
+      - name: SDK 埋点日志采集
+        layer: ods
+        command: bash scripts/linux/ds-realtime-task.sh start_sdk_collection
+        depends_on: [初始化 Fluss 表]
+      - name: 生成广告事件明细
+        layer: dwd
+        command: bash scripts/linux/ds-realtime-task.sh start_dwd_event
+        depends_on: [SDK 埋点日志采集]
+      - name: Last Click 订单归因
+        layer: dwd
+        command: bash scripts/linux/ds-realtime-task.sh start_attribution
+        depends_on: [MySQL CDC 同步 DIM 与账单订单贴源数据, 生成广告事件明细]
+      - name: 生成广告账单明细
+        layer: dwd
+        command: bash scripts/linux/ds-realtime-task.sh start_dwd_bill
+        depends_on: [MySQL CDC 同步 DIM 与账单订单贴源数据]
+      - name: 生成 10 s 实时 DWS
+        layer: dws
+        command: bash scripts/linux/ds-realtime-task.sh start_realtime_dws
+        depends_on: [生成广告账单明细, 生成广告事件明细, Last Click 订单归因]
+      - name: 验证 Paimon 与 StarRocks 实时结果
+        layer: serving
+        command: bash scripts/linux/ds-realtime-task.sh verify_outputs
+        depends_on: [启动 Paimon Tiering, 生成 10 s 实时 DWS]
+
+  - name: offline_daily_pipeline
+    schedule:
+      cron: "0 0 2 * * ?"
+      timezone: Asia/Shanghai
+    parameters:
+      biz_date: "$[yyyy-MM-dd-1]"
+    layout: left-to-right
+    tasks:
+      - name: 检查 Paimon DWD 输入
+        layer: dwd
+        command: bash scripts/linux/ds-offline-task.sh check_inputs '${biz_date}'
+      - name: 生成日级 DWS 主题汇总
+        layer: dws
+        command: bash scripts/linux/ds-offline-task.sh run_dws '${biz_date}'
+        depends_on: [检查 Paimon DWD 输入]
+      - name: offline_dm
+        layer: dm
+        command: bash scripts/linux/ds-offline-task.sh run_dm '${biz_date}'
+        depends_on: [生成日级 DWS 主题汇总]
+      - name: offline_ads
+        layer: ads
+        command: bash scripts/linux/ds-offline-task.sh run_ads '${biz_date}'
+        depends_on: [offline_dm]
+      - name: 验证 Paimon 与 StarRocks 离线结果
+        layer: serving
+        command: bash scripts/linux/ds-offline-task.sh verify_outputs '${biz_date}'
+        depends_on: [offline_ads]
+
+notes:
+  - dim_advertiser_df、dim_campaign_df、dim_unit_df、dim_creative_df、dim_user、dim_shop 和 dim_product 由同一个 Flink CDC StatementSet 维护。
+  - flink/sql/04_daily_dws.sql 以一个 StatementSet 并行写入四张 DWS 主题表。
+  - DM 与 ADS 从原有 10_daily_offline.sql 按 INSERT 目标表提取执行，不修改计算表达式；两者均读取 DWS，调度按 DWS → DM → ADS 串行。
+  - 实时 DWS 仅写 StarRocks 本地主键表，旧 Fluss/Paimon 实时表保留但不再由新作业写入。

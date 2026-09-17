@@ -9,14 +9,14 @@
   ],
   "nodes": [
     {"id": "config", "x": 72, "y": 154, "width": 250, "height": 112, "kind": "double_rect", "type_label": "CONFIG", "label": "RealtimeJobConfig", "sublabel": "windowSeconds = 10\noutOfOrderness / idleness", "fill": "#eff6ff", "stroke": "#93c5fd", "flat": true},
-    {"id": "util", "x": 72, "y": 330, "width": 250, "height": 112, "type_label": "UTILITY", "label": "FlussTableUtil", "sublabel": "Catalog / TableEnvironment\nscanHint / checkpoint", "fill": "#f0fdfa", "stroke": "#5eead4", "flat": true},
+    {"id": "util", "x": 72, "y": 330, "width": 250, "height": 112, "type_label": "UTILITY", "label": "FlussUtil", "sublabel": "Catalog / TableEnvironment\nscanHint / checkpoint", "fill": "#f0fdfa", "stroke": "#5eead4", "flat": true},
     {"id": "logjob", "x": 400, "y": 138, "width": 300, "height": 104, "type_label": "JOB", "label": "DwdLogDataStreamJob", "sublabel": "Fluss Table → DataStream → Fluss", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
     {"id": "logfn", "x": 820, "y": 138, "width": 290, "height": 104, "type_label": "PROCESS FUNCTION", "label": "DwdLogProcessFunction", "sublabel": "parse / validate / side output", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
-    {"id": "attribjob", "x": 400, "y": 318, "width": 300, "height": 104, "type_label": "JOB", "label": "DwdOrderAttributionJob", "sublabel": "click.connect(order).process(...) ", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "attribjob", "x": 400, "y": 318, "width": 300, "height": 104, "type_label": "JOB", "label": "DwdOrderAttributionJob", "sublabel": "paid → LastClick → order_acc", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
     {"id": "attribfn", "x": 820, "y": 318, "width": 290, "height": 104, "type_label": "KEYED CO-PROCESS", "label": "LastClickAttributionFunction", "sublabel": "ValueState + ListState / timer / 6 hours", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
-    {"id": "metricjob", "x": 400, "y": 498, "width": 300, "height": 104, "type_label": "JOB", "label": "RealtimeAdMetricJob", "sublabel": "signed delta / 10s TUMBLE", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
-    {"id": "agg", "x": 820, "y": 498, "width": 290, "height": 104, "type_label": "AGGREGATE", "label": "RealtimeMetricAggregateFunction", "sublabel": "Incremental + WindowResult", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
-    {"id": "models", "x": 388, "y": 642, "width": 730, "height": 76, "type_label": "POJO MODEL", "label": "RawLog · ParsedAdEvent · AdClickEvent · OrderDetail · AttributedOrder · MetricDelta · RealtimeMetric", "sublabel": "通用 windowStart / windowEnd 字段，不把窗口长度写入类名", "fill": "#f0fdf4", "stroke": "#86efac", "flat": true}
+    {"id": "metricjob", "x": 400, "y": 498, "width": 300, "height": 104, "type_label": "JOB", "label": "DwsAdCreativeJob", "sublabel": "CreativeField / 10s TUMBLE", "fill": "#faf5ff", "stroke": "#c4b5fd", "flat": true},
+    {"id": "agg", "x": 820, "y": 498, "width": 290, "height": 104, "type_label": "AGGREGATE", "label": "CreativeSummaryAggregator", "sublabel": "Incremental + WindowResult", "fill": "#fff7ed", "stroke": "#fdba74", "flat": true},
+    {"id": "models", "x": 388, "y": 642, "width": 730, "height": 76, "type_label": "POJO MODEL", "label": "RawLog · AdEvent · AdClickEvent · OrderInfo · AttributedOrder · CreativeField · CreativeSummary", "sublabel": "通用 windowStart / windowEnd 字段，不把窗口长度写入类名", "fill": "#f0fdf4", "stroke": "#86efac", "flat": true}
   ],
   "arrows": [
     {"source": "config", "target": "logjob", "label": "config", "flow": "control"},

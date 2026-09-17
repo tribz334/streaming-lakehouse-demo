@@ -14,6 +14,8 @@ public final class RealtimeJobConfig implements Serializable {
     private final Duration outOfOrderness;
     private final Duration sourceIdleness;
     private final Duration attributionAllowedLateness;
+    private final Duration dimLookupTimeout;
+    private final int dimLookupCapacity;
     private final int realtimeMetricWindowSeconds;
 
     private RealtimeJobConfig(Map<String, String> values) {
@@ -25,6 +27,9 @@ public final class RealtimeJobConfig implements Serializable {
         sourceIdleness = Duration.ofSeconds(Long.parseLong(values.getOrDefault("source-idleness-seconds", "30")));
         attributionAllowedLateness = Duration.ofSeconds(Long.parseLong(
                 values.getOrDefault("attribution-allowed-lateness-seconds", "10")));
+        dimLookupTimeout = Duration.ofSeconds(Long.parseLong(
+                values.getOrDefault("dim-lookup-timeout-seconds", "5")));
+        dimLookupCapacity = Integer.parseInt(values.getOrDefault("dim-lookup-capacity", "100"));
         realtimeMetricWindowSeconds = Integer.parseInt(
                 values.getOrDefault("realtime-metric-window-seconds", "10"));
         if (realtimeMetricWindowSeconds <= 0) {
@@ -32,6 +37,12 @@ public final class RealtimeJobConfig implements Serializable {
         }
         if (attributionAllowedLateness.isNegative()) {
             throw new IllegalArgumentException("attribution-allowed-lateness-seconds cannot be negative");
+        }
+        if (dimLookupTimeout.isZero() || dimLookupTimeout.isNegative()) {
+            throw new IllegalArgumentException("dim-lookup-timeout-seconds must be greater than zero");
+        }
+        if (dimLookupCapacity <= 0) {
+            throw new IllegalArgumentException("dim-lookup-capacity must be greater than zero");
         }
     }
 
@@ -52,5 +63,7 @@ public final class RealtimeJobConfig implements Serializable {
     public Duration outOfOrderness() { return outOfOrderness; }
     public Duration sourceIdleness() { return sourceIdleness; }
     public Duration attributionAllowedLateness() { return attributionAllowedLateness; }
+    public Duration dimLookupTimeout() { return dimLookupTimeout; }
+    public int dimLookupCapacity() { return dimLookupCapacity; }
     public int realtimeMetricWindowSeconds() { return realtimeMetricWindowSeconds; }
 }

@@ -7,12 +7,6 @@ public class AdClickEvent implements Serializable {
     public long uid;
     public long productId;
     public long creativeId;
-    public long slotId;
-    public long unitId;
-    public long campaignId;
-    public long advertiserId;
-    public int placementType;
-    public int adType;
     public long clickTimeMillis;
 
     public AdClickEvent() {}

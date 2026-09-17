@@ -1,4 +1,24 @@
+ARG MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-17
 ARG FLINK_BASE_IMAGE=flink:1.20.3-scala_2.12-java17
+
+FROM ${MAVEN_IMAGE} AS java-build
+WORKDIR /build
+
+# Build the application JAR inside the image. The persistent BuildKit Maven
+# cache survives failed network transfers; bounded retries handle transient
+# Maven Central disconnects without downloading every reporting plugin via
+# dependency:go-offline.
+COPY flink-java/pom.xml flink-java/pom.xml
+COPY flink/lib/fluss-flink-1.20.jar flink/lib/fluss-flink-1.20.jar
+COPY flink-java/src flink-java/src
+RUN --mount=type=cache,target=/root/.m2 \
+    for attempt in 1 2 3; do \
+      mvn -f flink-java/pom.xml --batch-mode package && exit 0; \
+      echo "Maven build attempt ${attempt} failed; retrying..."; \
+      sleep 3; \
+    done; \
+    exit 1
+
 FROM ${FLINK_BASE_IMAGE}
 
 USER root
@@ -14,7 +34,7 @@ COPY flink/lib/hadoop-client-runtime.jar /opt/flink/lib/hadoop-client-runtime.ja
 COPY flink/lib/jackson-annotations-2.18.3.jar /opt/flink/lib/
 COPY flink/lib/jackson-core-2.18.3.jar /opt/flink/lib/
 COPY flink/lib/jackson-databind-2.18.3.jar /opt/flink/lib/
-COPY flink-java/target/ad-realtime-datastream-jobs.jar /opt/flink/usrlib/ad-realtime-datastream-jobs.jar
+COPY --from=java-build /build/flink-java/target/ad-realtime-datastream-jobs.jar /opt/flink/usrlib/ad-realtime-datastream-jobs.jar
 RUN mkdir -p /warehouse/fluss /warehouse/paimon /warehouse/checkpoints /opt/flink/usrlib/sql \
     && chown -R flink:flink /warehouse /opt/flink/usrlib
 USER flink

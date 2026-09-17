@@ -9,33 +9,33 @@ CREATE PROCEDURE migrate_order_amount_030()
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'ad_ods' AND table_name = 'order_detail' AND column_name = 'order_amount'
+    WHERE table_schema = 'ad_ods' AND table_name = 'order_info' AND column_name = 'order_amount'
   ) AND NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'ad_ods' AND table_name = 'order_detail' AND column_name = 'total_amount'
+    WHERE table_schema = 'ad_ods' AND table_name = 'order_info' AND column_name = 'total_amount'
   ) THEN
-    ALTER TABLE order_detail RENAME COLUMN order_amount TO total_amount;
+    ALTER TABLE order_info RENAME COLUMN order_amount TO total_amount;
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'ad_ods' AND table_name = 'order_detail' AND column_name = 'product_price'
+    WHERE table_schema = 'ad_ods' AND table_name = 'order_info' AND column_name = 'product_price'
   ) THEN
-    ALTER TABLE order_detail ADD COLUMN product_price DECIMAL(18,2) NULL AFTER product_id;
+    ALTER TABLE order_info ADD COLUMN product_price DECIMAL(18,2) NULL AFTER product_id;
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'ad_ods' AND table_name = 'order_detail' AND column_name = 'product_num'
+    WHERE table_schema = 'ad_ods' AND table_name = 'order_info' AND column_name = 'product_num'
   ) THEN
-    ALTER TABLE order_detail ADD COLUMN product_num INT NULL AFTER product_price;
+    ALTER TABLE order_info ADD COLUMN product_num INT NULL AFTER product_price;
   END IF;
 
-  UPDATE order_detail
+  UPDATE order_info
   SET product_price = COALESCE(product_price, total_amount),
       product_num = COALESCE(product_num, 1);
 
-  ALTER TABLE order_detail
+  ALTER TABLE order_info
     MODIFY COLUMN product_price DECIMAL(18,2) NOT NULL AFTER product_id,
     MODIFY COLUMN product_num INT NOT NULL DEFAULT 1 AFTER product_price,
     MODIFY COLUMN total_amount DECIMAL(18,2) NOT NULL AFTER product_num;

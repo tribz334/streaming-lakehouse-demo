@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ustc.example/schema/ods_log_di.schema.json",
+  "$id": "https://ustc.example/schema/ods_log.schema.json",
   "title": "ODS Raw SDK Tracking Report",
   "type": "object",
   "additionalProperties": false,

@@ -1,7 +1,7 @@
 package cn.edu.ustc.lakehouse.realtime.dwd;
 
 import cn.edu.ustc.lakehouse.realtime.model.DirtyLog;
-import cn.edu.ustc.lakehouse.realtime.model.ParsedAdEvent;
+import cn.edu.ustc.lakehouse.realtime.model.AdEvent;
 import cn.edu.ustc.lakehouse.realtime.model.RawLog;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,10 +10,16 @@ import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
-/** Parses, validates and fans out the JSON payload retained by Fluss ods_log_di. */
-public final class DwdLogProcessFunction extends ProcessFunction<RawLog, ParsedAdEvent> {
+/** Parses, validates and fans out the JSON payload retained by Fluss ods_log. */
+public final class DwdLogProcessFunction extends ProcessFunction<RawLog, AdEvent> {
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
+
     private final OutputTag<DirtyLog> dirtyOutput;
     private transient ObjectMapper mapper;
 
@@ -27,13 +33,16 @@ public final class DwdLogProcessFunction extends ProcessFunction<RawLog, ParsedA
     }
 
     @Override
-    public void processElement(RawLog raw, Context context, Collector<ParsedAdEvent> output) {
+    public void processElement(RawLog raw, Context context, Collector<AdEvent> output) {
         try {
-            validateEnvelope(raw);
+            validateRawLog(raw);
             JsonNode common = parseJson(raw.common, "common");
             JsonNode actions = parseJson(raw.events, "events");
-            if (!actions.isArray() || actions.isEmpty()) {
-                throw new IllegalArgumentException("events must be a non-empty JSON array");
+            if (!common.isObject()) {
+                throw new IllegalArgumentException("common must be a JSON object");
+            }
+            if ((!actions.isArray() || actions.isEmpty()) && !actions.isObject()) {
+                throw new IllegalArgumentException("events must be a non-empty array or an event object");
             }
             processActions(raw, common, actions, output);
         } catch (Exception error) {
@@ -42,14 +51,21 @@ public final class DwdLogProcessFunction extends ProcessFunction<RawLog, ParsedA
     }
 
     private void processActions(
-            RawLog raw, JsonNode common, JsonNode actions, Collector<ParsedAdEvent> output) {
+            RawLog raw, JsonNode common, JsonNode actions, Collector<AdEvent> output) {
+        if (actions.isObject()) {
+            output.collect(parseAction(raw, common, actions, 0));
+            return;
+        }
         for (int index = 0; index < actions.size(); index++) {
             output.collect(parseAction(raw, common, actions.get(index), index));
         }
     }
 
-    private ParsedAdEvent parseAction(RawLog raw, JsonNode common, JsonNode action, int index) {
-        ParsedAdEvent event = new ParsedAdEvent();
+    private AdEvent parseAction(RawLog raw, JsonNode common, JsonNode action, int index) {
+        if (!action.isObject()) {
+            throw new IllegalArgumentException("event at index " + index + " must be a JSON object");
+        }
+        AdEvent event = new AdEvent();
         event.eventId = index == 0 ? raw.msgId : raw.msgId ^ (0x9E3779B97F4A7C15L * index);
         event.uid = requiredLong(common, "uid");
         event.deviceId = requiredText(common, "device_id");
@@ -73,7 +89,10 @@ public final class DwdLogProcessFunction extends ProcessFunction<RawLog, ParsedA
         return mapper.readTree(json);
     }
 
-    private void validateEnvelope(RawLog raw) {
+    private void validateRawLog(RawLog raw) {
+        if (raw == null) {
+            throw new IllegalArgumentException("raw log is null");
+        }
         if (raw.msgId <= 0 || raw.busId <= 0 || raw.appId <= 0 || raw.logId <= 0 || raw.ts <= 0) {
             throw new IllegalArgumentException("invalid SDK envelope identifier or timestamp");
         }
@@ -83,35 +102,33 @@ public final class DwdLogProcessFunction extends ProcessFunction<RawLog, ParsedA
     }
 
     private DirtyLog collectDirty(RawLog raw, Exception error) {
+        long errorTime = System.currentTimeMillis();
         DirtyLog dirty = new DirtyLog();
-        dirty.eventId = raw.msgId;
-        dirty.creativeId = extractCreativeId(raw.events);
-        dirty.errorReason = "PARSE_OR_VALIDATION_ERROR: " + error.getMessage();
-        dirty.common = raw.common;
-        dirty.events = raw.events;
-        dirty.ts = raw.ts;
-        dirty.dt = raw.dt;
+        dirty.rawData = serializeRawLog(raw);
+        dirty.errorReason = "PARSE_OR_VALIDATION_ERROR: "
+                + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
+        dirty.errorTime = errorTime;
+        dirty.dt = DATE_FORMATTER.format(Instant.ofEpochMilli(errorTime).atZone(BUSINESS_ZONE));
         return dirty;
     }
 
-    private Long extractCreativeId(String events) {
+    private String serializeRawLog(RawLog raw) {
+        if (raw == null) {
+            return "null";
+        }
         try {
-            JsonNode actions = mapper.readTree(events);
-            return actions.isArray() && !actions.isEmpty() && actions.get(0).has("creative_id")
-                    ? actions.get(0).get("creative_id").asLong()
-                    : null;
+            return mapper.writeValueAsString(raw);
         } catch (Exception ignored) {
-            return null;
+            return "RawLog{msgId=" + raw.msgId + ",busId=" + raw.busId + ",appId=" + raw.appId
+                    + ",logId=" + raw.logId + ",common=" + raw.common + ",events=" + raw.events
+                    + ",ts=" + raw.ts + ",dt=" + raw.dt + "}";
         }
     }
 
     private static String normalizeEvent(String value) {
         String normalized = value.toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "send" -> "delivery";
-            case "show" -> "impression";
-            case "convert" -> "conversion";
-            case "delivery", "impression", "click", "conversion" -> normalized;
+            case "delivery", "show", "click", "convert" -> normalized;
             default -> throw new IllegalArgumentException("unsupported event: " + value);
         };
     }

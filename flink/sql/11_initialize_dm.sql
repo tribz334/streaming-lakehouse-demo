@@ -5,7 +5,7 @@ SET 'table.local-time-zone'='Asia/Shanghai';
 SET 'pipeline.name'='paimon-dm-initialize-__BIZ_DATE__';
 CREATE CATALOG paimon WITH ('type'='paimon','metastore'='filesystem','warehouse'='file:///warehouse/paimon');
 
-INSERT OVERWRITE paimon.ad_dw.dm_advertiser_df
+INSERT OVERWRITE paimon.ad_dw.dm_ad_advertiser_df
 PARTITION (dt='__BIZ_DATE__')
 SELECT dim.advertiser_id,
   dim.advertiser_name,
@@ -50,10 +50,10 @@ SELECT dim.advertiser_id,
   COALESCE(SUM(CASE WHEN d.dt>='__DATE_MINUS_29__' AND d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_30d,
   COALESCE(SUM(CASE WHEN d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_lifetime
 FROM paimon.ad_dw.dim_advertiser_df dim
-LEFT JOIN paimon.ad_dw.dws_advertiser_di d ON dim.advertiser_id=d.advertiser_id AND d.dt<='__BIZ_DATE__'
+LEFT JOIN paimon.ad_dw.dws_ad_advertiser_di d ON dim.advertiser_id=d.advertiser_id AND d.dt<='__BIZ_DATE__'
 GROUP BY dim.advertiser_id,dim.advertiser_name;
 
-INSERT OVERWRITE paimon.ad_dw.dm_campaign_df
+INSERT OVERWRITE paimon.ad_dw.dm_ad_campaign_df
 PARTITION (dt='__BIZ_DATE__')
 SELECT dim.campaign_id,
   dim.campaign_name,
@@ -98,10 +98,10 @@ SELECT dim.campaign_id,
   COALESCE(SUM(CASE WHEN d.dt>='__DATE_MINUS_29__' AND d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_30d,
   COALESCE(SUM(CASE WHEN d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_lifetime
 FROM paimon.ad_dw.dim_campaign_df dim
-LEFT JOIN paimon.ad_dw.dws_campaign_di d ON dim.campaign_id=d.campaign_id AND d.dt<='__BIZ_DATE__'
+LEFT JOIN paimon.ad_dw.dws_ad_campaign_di d ON dim.campaign_id=d.campaign_id AND d.dt<='__BIZ_DATE__'
 GROUP BY dim.campaign_id,dim.campaign_name;
 
-INSERT OVERWRITE paimon.ad_dw.dm_unit_df
+INSERT OVERWRITE paimon.ad_dw.dm_ad_unit_df
 PARTITION (dt='__BIZ_DATE__')
 SELECT dim.unit_id,
   dim.unit_name,
@@ -148,10 +148,10 @@ SELECT dim.unit_id,
   COALESCE(SUM(CASE WHEN d.dt>='__DATE_MINUS_29__' AND d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_30d,
   COALESCE(SUM(CASE WHEN d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_lifetime
 FROM paimon.ad_dw.dim_unit_df dim
-LEFT JOIN paimon.ad_dw.dws_unit_di d ON dim.unit_id=d.unit_id AND d.dt<='__BIZ_DATE__'
+LEFT JOIN paimon.ad_dw.dws_ad_unit_di d ON dim.unit_id=d.unit_id AND d.dt<='__BIZ_DATE__'
 GROUP BY dim.unit_id,dim.unit_name,dim.placement_type,dim.ad_type;
 
-INSERT OVERWRITE paimon.ad_dw.dm_creative_df
+INSERT OVERWRITE paimon.ad_dw.dm_ad_creative_df
 PARTITION (dt='__BIZ_DATE__')
 SELECT dim.creative_id,
   dim.creative_name,
@@ -196,5 +196,5 @@ SELECT dim.creative_id,
   COALESCE(SUM(CASE WHEN d.dt>='__DATE_MINUS_29__' AND d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_30d,
   COALESCE(SUM(CASE WHEN d.dt<='__BIZ_DATE__' THEN d.refund_order_gmv ELSE CAST(0 AS BIGINT) END),CAST(0 AS BIGINT)) AS refund_order_gmv_lifetime
 FROM paimon.ad_dw.dim_creative_df dim
-LEFT JOIN paimon.ad_dw.dws_creative_di d ON dim.creative_id=d.creative_id AND d.dt<='__BIZ_DATE__'
+LEFT JOIN paimon.ad_dw.dws_ad_creative_di d ON dim.creative_id=d.creative_id AND d.dt<='__BIZ_DATE__'
 GROUP BY dim.creative_id,dim.creative_name;

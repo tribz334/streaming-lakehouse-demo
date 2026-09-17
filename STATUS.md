@@ -1,16 +1,17 @@
 # Current status
 
-- Architecture: Flink + Fluss + Paimon + StarRocks.
-- Ingestion: SDK JSON -> Fluss `ods_log_di`; MySQL CDC -> Fluss `ods_mysql_bill_di`, `ods_mysql_order_acc` and seven `dim_*_df` tables.
-- Model: Unit-owned `placement_type` (1..6) and `ad_type` (1..4); SDK keeps `slot_id` but does not report classification. DWD enriches from `dim_unit_df` and persists the result.
-- Attribution: six-hour LastClick on `uid + product_id`, aligned with the Fluss DWD hot-log retention; source orders contain no `creative_id` or `slot_id`.
-- Realtime: Fluss DWD facts -> DataStream signed deltas -> configurable 10-second event-time tumble -> `ads_realtime_metric_10s`.
-- DM: advertiser / campaign / unit / creative snapshots use only `_1d`, `_7d`, `_30d`, and `_lifetime` metric suffixes.
-- Offline ADS: `ads_offline_metric_di`, advertiser retention `ads_advertiser_retention_di`, and per-order all-history Last Click `ads_order_attribution_di` with a `LONG_TERM` bucket beyond 30 days.
-- Persistence: Fluss Tiering Service -> Paimon, target freshness 30 seconds.
-- Offline: one business date per invocation, idempotently published to Paimon and StarRocks.
-- DBeaver: connect to StarRocks `127.0.0.1:19030` and query the stable `ad_ads` service tables.
-- DBeaver: `paimon_catalog` is permanent and can be refreshed to inspect tiered tables.
-- Legacy Kafka, redundant SQL realtime jobs, HMS, and manual-sync paths removed; Java DataStream reads and writes Fluss through Table API.
+- Architecture: SDK JSON -> Fluss ODS, MySQL CDC -> Fluss ODS/DIM, Flink -> DWD/DWS/realtime ADS, Fluss Tiering -> Paimon, daily batch -> DM/offline ADS, StarRocks -> DBeaver/Superset.
+- Classification: Unit owns `placement_type` (1=feed, 2=search, 3=splash, 4=rewarded, 5=banner, 6=other) and `ad_type` (1=short_video, 2=live, 3=image_text, 4=other). DWD enriches both fields through `creative_id`; SDK retains `slot_id` but does not report either classification.
+- Cost: MySQL CDC writes `bill_info` directly to `dwd_ad_bill_di`; closed-loop Cost is derived before aggregation from `dim_unit.is_closed`.
+- Realtime attribution: first paid orders use six-hour LastClick on `uid + product_id`; event, bill and signed order deltas enter the configurable 10-second event-time tumble `ads_realtime_metric_10s`.
+- Offline attribution: `ads_order_attribution_di` uses `DIRECT/1D/7D/30D/ORGANIC`; there is no `LONG_TERM` bucket.
+- Topics: DWS and DM each contain exactly advertiser / campaign / unit / creative tables. DM snapshots use `_1d`, `_7d`, `_30d`, and `_lifetime` metric suffixes.
+- Persistence: realtime ADS tiers to Paimon with 5-second freshness; all other tier-enabled Fluss tables use 30 seconds.
+- Money: raw Fluss/Paimon `BIGINT` values use one-thousandth of a fen (1 yuan = 100000). StarRocks business-serving views expose yuan.
+- Dashboard: realtime reads only the latest 10-second window. Both dashboards expose Cost, closed-loop Cost, ad GMV, ROAS and non-`other` classification cards; offline additionally exposes CTR, CVR, Cost daily trend and GMV daily trend. Warehouse `other_*` fields remain available for reconciliation but are not mounted on either dashboard.
+- Demo data: `event-generator` creates a deterministic, economically coherent 35-day history and then continues realtime traffic. `materialize-demo-history.ps1` publishes the requested offline date range.
+- Verification: the supported local flow is `start-stack.ps1 -WithBi`, `materialize-demo-history.ps1`, then `verify-stack.ps1 -WithBi`.
 
-Runtime metadata has been migrated to the row-oriented DWS/DM classification contract. StarRocks exposes all six DWS views and six DM views through `ad_ads`.
+For an existing demo volume whose runtime schema is incompatible, `start-stack.ps1 -WithBi -RebuildRuntimeSchema` stops streaming jobs and rebuilds the Fluss/Paimon runtime tables. Use it only after confirming that local demo data may be regenerated; it is not a production online-migration mechanism.
+
+The checked-in Docker Compose topology is a single-node thesis demonstration: one Fluss Coordinator/Tablet, one Flink JobManager/TaskManager and one StarRocks FE/BE. The thesis production target requires replicated services, object storage, durable checkpoints/savepoints, managed secrets, orchestration, resource isolation, monitoring/alerting and backup/recovery. Demo credentials, generated history and destructive schema rebuilds are intentionally outside that production target.

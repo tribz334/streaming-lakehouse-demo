@@ -2,7 +2,7 @@ package cn.edu.ustc.lakehouse.realtime.model;
 
 import java.io.Serializable;
 
-/** One append-only row from Fluss ods_log_di. */
+/** One append-only row from Fluss ods_log. */
 public class RawLog implements Serializable {
     public long msgId;
     public int busId;

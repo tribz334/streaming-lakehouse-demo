@@ -1,20 +1,23 @@
 package cn.edu.ustc.lakehouse.realtime.model;
 
 import java.io.Serializable;
-import java.time.Instant;
-
-/** Final LastClick result written to Fluss dwd_ad_order_acc. */
+/** Last Click result enriched with core DIM attributes before writing dwd_order_acc. */
 public class AttributedOrder implements Serializable {
     public long orderId;
     public long uid;
     public long productId;
-    public long shopId;
+    public Long shopId;
     public Long creativeId;
-    public Long slotId;
+    public Long unitId;
+    public Long campaignId;
+    public Long advertiserId;
+    public byte isClosed;
+    public int adType;
+    public int placementType;
     public long productPrice;
     public int productNum;
     public long totalAmount;
-    public int paymentMethod;
+    public Integer paymentMethod;
     public String receiverName;
     public String receiverPhone;
     public String shippingAddress;
@@ -26,14 +29,6 @@ public class AttributedOrder implements Serializable {
     public String confirmTime;
     public String refundTime;
     public String updatedAt;
-    public Long advertiserId;
-    public Long campaignId;
-    public Long unitId;
-    public Integer placementType;
-    public Integer adType;
-    public Instant clickTime;
-    public boolean directAttribution;
-    public Instant eventTime;
     public String dt;
     public String hour;
 

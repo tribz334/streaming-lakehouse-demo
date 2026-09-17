@@ -6,29 +6,29 @@ CREATE PROCEDURE migrate_order_lifecycle_036()
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='ad_ods' AND table_name='order_detail' AND column_name='payment_time'
+    WHERE table_schema='ad_ods' AND table_name='order_info' AND column_name='payment_time'
   ) AND NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='ad_ods' AND table_name='order_detail' AND column_name='pay_time'
+    WHERE table_schema='ad_ods' AND table_name='order_info' AND column_name='pay_time'
   ) THEN
-    ALTER TABLE order_detail RENAME COLUMN payment_time TO pay_time;
+    ALTER TABLE order_info RENAME COLUMN payment_time TO pay_time;
   END IF;
 
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='ad_ods' AND table_name='order_detail' AND column_name='refund_finish_time'
+    WHERE table_schema='ad_ods' AND table_name='order_info' AND column_name='refund_finish_time'
   ) THEN
-    ALTER TABLE order_detail DROP COLUMN refund_finish_time;
+    ALTER TABLE order_info DROP COLUMN refund_finish_time;
   END IF;
 
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema='ad_ods' AND table_name='order_detail' AND column_name='finish_time'
+    WHERE table_schema='ad_ods' AND table_name='order_info' AND column_name='finish_time'
   ) THEN
-    ALTER TABLE order_detail DROP COLUMN finish_time;
+    ALTER TABLE order_info DROP COLUMN finish_time;
   END IF;
 
-  UPDATE order_detail
+  UPDATE order_info
   SET order_status=CASE
     WHEN refund_time IS NOT NULL THEN 5
     WHEN confirm_time IS NOT NULL THEN 4
@@ -39,10 +39,10 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.table_constraints
-    WHERE constraint_schema='ad_ods' AND table_name='order_detail'
+    WHERE constraint_schema='ad_ods' AND table_name='order_info'
       AND constraint_name='chk_order_status' AND constraint_type='CHECK'
   ) THEN
-    ALTER TABLE order_detail
+    ALTER TABLE order_info
       ADD CONSTRAINT chk_order_status CHECK (order_status BETWEEN 1 AND 5);
   END IF;
 END//

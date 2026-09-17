@@ -6,6 +6,7 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $root
 
 $migrationFiles = @(
+  "mysql/migrations/028_unify_fact_table_names.sql",
   "mysql/migrations/029_expand_order_lifecycle.sql",
   "mysql/migrations/030_normalize_order_amount_fields.sql",
   "mysql/migrations/031_add_order_shop_id.sql",
@@ -13,7 +14,8 @@ $migrationFiles = @(
   "mysql/migrations/034_repair_utf8_master_data.sql",
   "mysql/migrations/035_remove_order_ad_source_fields.sql",
   "mysql/migrations/036_simplify_order_lifecycle.sql",
-  "mysql/migrations/038_unit_classification.sql"
+  "mysql/migrations/038_unit_classification.sql",
+  "mysql/migrations/039_align_demo_semantics.sql"
 )
 $deadline = (Get-Date).AddMinutes(2)
 do {

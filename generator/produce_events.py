@@ -1,25 +1,34 @@
 import argparse
 import asyncio
 import hashlib
+import inspect
 import json
 import math
 import os
 import random
 import time
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 import fluss
 import mysql.connector
-INTERVAL = float(os.getenv("EVENT_INTERVAL_SECONDS", "0.25"))
+
+# Keep local/direct runs as sparse as the Compose demo: roughly one event/hour
+# unless EVENT_INTERVAL_SECONDS (or --rate) is explicitly overridden.
+INTERVAL = float(os.getenv("EVENT_INTERVAL_SECONDS", "3600"))
 NODE_ID = os.getenv("GENERATOR_NODE_ID", "ingest-node-1")
 NODE_NUMBER = int(os.getenv("GENERATOR_NODE_NUMBER", "1")) & 0x3FF
 RANDOM_SEED = int(os.getenv("GENERATOR_RANDOM_SEED", "20260713"))
-HISTORY_DAYS = int(os.getenv("GENERATOR_HISTORY_DAYS", "0"))
-HISTORY_EVENTS_PER_DAY = int(os.getenv("GENERATOR_HISTORY_EVENTS_PER_DAY", "1800"))
-ATTRIBUTION_DEMO_ORDERS = int(os.getenv("GENERATOR_ATTRIBUTION_DEMO_ORDERS", "500"))
+HISTORY_DAYS = int(os.getenv("GENERATOR_HISTORY_DAYS", "35"))
+HISTORY_EVENTS_PER_DAY = int(os.getenv("GENERATOR_HISTORY_EVENTS_PER_DAY", "180"))
+ATTRIBUTION_DEMO_ORDERS_PER_DAY = int(
+    os.getenv("GENERATOR_ATTRIBUTION_DEMO_ORDERS_PER_DAY", "15")
+)
 LIVE_ORDER_EVERY = int(os.getenv("GENERATOR_LIVE_ORDER_EVERY", "5"))
 HISTORY_START_DATE = os.getenv("GENERATOR_HISTORY_START_DATE", "").strip()
 HISTORY_END_DATE = os.getenv("GENERATOR_HISTORY_END_DATE", "").strip()
+MYSQL_RETRY_SECONDS = float(os.getenv("GENERATOR_MYSQL_RETRY_SECONDS", "2"))
+FLUSS_RETRY_SECONDS = float(os.getenv("GENERATOR_FLUSS_RETRY_SECONDS", "2"))
 FRAUD_INJECTION_ENABLED = os.getenv("FRAUD_INJECTION_ENABLED", "true").lower() == "true"
 FRAUD_BURST_EVERY = int(os.getenv("FRAUD_BURST_EVERY", "180"))
 FRAUD_BURST_SIZE = int(os.getenv("FRAUD_BURST_SIZE", "36"))
@@ -30,12 +39,15 @@ APP_ID = int(os.getenv("GENERATOR_APP_ID", "80"))
 AD_LOG_ID = int(os.getenv("GENERATOR_AD_LOG_ID", "1234"))
 FLUSS_BOOTSTRAP_SERVERS = os.getenv("FLUSS_BOOTSTRAP_SERVERS", "fluss-coordinator:9123")
 FLUSS_DATABASE = os.getenv("FLUSS_DATABASE", "ad_dw")
-FLUSS_ODS_TABLE = os.getenv("FLUSS_ODS_TABLE", "ods_log_di")
+FLUSS_ODS_TABLE = os.getenv("FLUSS_ODS_TABLE", "ods_log")
 FLUSS_LOOP = asyncio.new_event_loop()
 FLUSS_CONNECTION = None
 FLUSS_ADMIN = None
 FLUSS_WRITER = None
 FLUSS_PARTITIONS = set()
+MYSQL_CONNECTION = None
+RAW_UNITS_PER_YUAN = 100_000
+HISTORY_GENERATOR_VERSION = "closed-loop-v1"
 MEDIA = ["douyin", "kuaishou", "bilibili", "xiaohongshu", "toutiao", "weibo"]
 MEDIA_PROFILES = {
     "douyin": (28, 1.10, 1.06, 1.12),
@@ -81,9 +93,9 @@ REGIONS = [
     "Tibet", "Shaanxi", "Gansu", "Qinghai", "Ningxia", "Xinjiang"
 ]
 ATTRIBUTION_BUCKETS = [
-    "natural", "direct_30m",
+    "DIRECT", "1D", "7D", "30D", "ORGANIC",
 ]
-ATTRIBUTION_BUCKET_WEIGHTS = [25, 75]
+ATTRIBUTION_BUCKET_WEIGHTS = [35, 20, 18, 12, 15]
 
 
 ID_EPOCH_MS = int(datetime(2026, 1, 1, tzinfo=TZ).timestamp() * 1000)
@@ -112,6 +124,30 @@ def anonymous_user_id(raw_id):
 
 def epoch_millis(timestamp):
     return int(datetime.fromisoformat(timestamp).timestamp() * 1000)
+
+
+def deterministic_seed(*parts):
+    """Return a process-independent seed for reproducible historical data."""
+    material = "|".join(str(part) for part in parts).encode("utf-8")
+    return int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+
+
+def yuan_to_raw_units(value):
+    """Convert yuan to the warehouse integer convention: 1 yuan = 100000."""
+    amount = Decimal(str(value or 0)) * RAW_UNITS_PER_YUAN
+    return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def raw_units_to_yuan(value):
+    return float(Decimal(int(value or 0)) / RAW_UNITS_PER_YUAN)
+
+
+def mysql_timestamp(value):
+    """Convert an ISO timestamp to the naive Asia/Shanghai value stored by MySQL."""
+    moment = value if isinstance(value, datetime) else datetime.fromisoformat(value)
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(TZ).replace(tzinfo=None)
+    return moment
 
 
 def simulated_area(region):
@@ -144,6 +180,50 @@ def mysql_conn():
     )
 
 
+def close_mysql_connection():
+    global MYSQL_CONNECTION
+    connection, MYSQL_CONNECTION = MYSQL_CONNECTION, None
+    if connection is not None:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+def get_mysql_connection():
+    global MYSQL_CONNECTION
+    if MYSQL_CONNECTION is None:
+        MYSQL_CONNECTION = mysql_conn()
+    return MYSQL_CONNECTION
+
+
+def execute_mysql(statement, params=(), *, fetch=None, description="mysql statement"):
+    """Execute one retry-safe transaction, reconnecting after transient failures."""
+    while True:
+        cursor = None
+        try:
+            connection = get_mysql_connection()
+            cursor = connection.cursor(dictionary=fetch is not None)
+            cursor.execute(statement, params)
+            result = None
+            if fetch == "one":
+                result = cursor.fetchone()
+            elif fetch == "all":
+                result = cursor.fetchall()
+            connection.commit()
+            return result
+        except Exception as exc:
+            close_mysql_connection()
+            print(f"{NODE_ID} reconnecting to MySQL after {description} failed: {exc}", flush=True)
+            time.sleep(MYSQL_RETRY_SECONDS)
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+
+
 async def open_fluss_writer(config):
     connection = await fluss.FlussConnection.create(config)
     table = await connection.get_table(fluss.TablePath(FLUSS_DATABASE, FLUSS_ODS_TABLE))
@@ -173,25 +253,63 @@ def connect_fluss():
     FLUSS_ADMIN = FLUSS_CONNECTION.get_admin()
 
 
+async def close_fluss_resources(writer, connection):
+    for resource in (writer, connection):
+        close = getattr(resource, "close", None)
+        if close is None:
+            continue
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+
+
+def disconnect_fluss():
+    global FLUSS_CONNECTION, FLUSS_ADMIN, FLUSS_WRITER
+    connection, writer = FLUSS_CONNECTION, FLUSS_WRITER
+    FLUSS_CONNECTION = None
+    FLUSS_ADMIN = None
+    FLUSS_WRITER = None
+    FLUSS_PARTITIONS.clear()
+    if connection is not None or writer is not None:
+        try:
+            FLUSS_LOOP.run_until_complete(close_fluss_resources(writer, connection))
+        except Exception:
+            pass
+
+
+def ensure_fluss_connection():
+    while FLUSS_WRITER is None:
+        try:
+            connect_fluss()
+        except Exception as exc:
+            disconnect_fluss()
+            print(f"{NODE_ID} waiting for Fluss ODS table: {exc}", flush=True)
+            time.sleep(FLUSS_RETRY_SECONDS)
+
+
 def load_creatives():
-    with mysql_conn() as conn:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(
-            """
-            SELECT a.advertiser_id, a.industry_l2_name AS industry,
-                CASE WHEN MOD(a.advertiser_id, 3)=0 THEN 'KA' ELSE 'Growth' END AS tier,
-                c.campaign_id, '电商下单推广' AS promotion_goal,
-                c.budget / 100000 AS budget,
-                u.unit_id, u.product_id,
-                u.bid_type AS billing_mode,
-                u.bid / 100000 AS bid_amount, cr.creative_id
-            FROM advertiser_info a
-            JOIN campaign_info c ON a.advertiser_id = c.advertiser_id
-            JOIN unit_info u ON c.campaign_id = u.campaign_id
-            JOIN creative_info cr ON u.unit_id = cr.unit_id
-            """
-        )
-        return cursor.fetchall()
+    rows = execute_mysql(
+        """
+        SELECT a.advertiser_id, a.industry_l2_name AS industry,
+            CASE WHEN MOD(a.advertiser_id, 3)=0 THEN 'KA' ELSE 'Growth' END AS tier,
+            c.campaign_id, '电商下单推广' AS promotion_goal,
+            c.budget AS budget_raw, u.unit_id, u.product_id,
+            u.bid_type AS billing_mode, u.bid AS bid_raw, cr.creative_id,
+            p.shop_id, p.price AS product_price_raw
+        FROM advertiser_info a
+        JOIN campaign_info c ON a.advertiser_id = c.advertiser_id
+        JOIN unit_info u ON c.campaign_id = u.campaign_id
+        JOIN creative_info cr ON u.unit_id = cr.unit_id
+        JOIN product_info p ON u.product_id = p.product_id
+        """,
+        fetch="all",
+        description="loading creative dimensions",
+    )
+    for row in rows:
+        row["budget"] = raw_units_to_yuan(row.pop("budget_raw"))
+        row["bid_amount"] = raw_units_to_yuan(row.pop("bid_raw"))
+        row["product_price"] = raw_units_to_yuan(row.pop("product_price_raw"))
+    return rows
 
 
 def stable_factor(value, low=0.82, high=1.18):
@@ -209,11 +327,11 @@ def billable_event_type(billing_mode):
     """Return the event that creates an immutable charge for one billing mode."""
     mode = normalize_billing_mode(billing_mode)
     if mode in {"CPM", "OCPM"}:
-        return "impression"
+        return "show"
     if mode in {"CPC", "OCPC"}:
         return "click"
     if mode in {"CPA", "OCPA"}:
-        return "conversion"
+        return "convert"
     raise ValueError(f"unsupported billing mode: {billing_mode}")
 
 
@@ -226,6 +344,16 @@ def calculate_spend(event_type, billing_mode, bid_price, media_cost):
     if mode in {"CPM", "OCPM"}:
         return round(adjusted_bid / 1000.0, 4)
     return round(max(0.15, adjusted_bid), 4)
+
+
+def set_order_amount(event, total_yuan, rng):
+    """Keep unit price, quantity and GMV internally consistent in yuan."""
+    quantity = int(event.get("product_num") or rng.choices([1, 2, 3], weights=[72, 22, 6], k=1)[0])
+    unit_price = round(max(0.01, float(total_yuan) / quantity), 2)
+    event["product_num"] = quantity
+    event["product_price"] = unit_price
+    event["gmv"] = round(unit_price * quantity, 2)
+    return event
 
 
 def traffic_intensity(moment):
@@ -282,36 +410,40 @@ def make_event(keys, event_time=None, rng=random):
     )
     order_rate = min(0.72, 0.46 * industry_conversion * objective_conversion)
     event_type = rng.choices(
-        ["delivery", "impression", "click", "conversion", "order"],
+        ["delivery", "show", "click", "convert", "order"],
         weights=[1.0, 0.85, click_rate, click_rate * conversion_rate,
                  click_rate * conversion_rate * order_rate],
         k=1,
     )[0]
     if commerce_channel == "external" and event_type == "order":
-        event_type = "conversion"
+        event_type = "convert"
     gmv = 0.0
     order_id = None
+    product_num = 0
+    product_price = 0.0
     bid_amount = float(key.get("bid_amount") or 2.5)
     billing_mode = normalize_billing_mode(key.get("billing_mode"))
     bid_price = round(max(0.2, rng.lognormvariate(math.log(bid_amount), 0.22)), 4)
     spend = calculate_spend(event_type, billing_mode, bid_price, media_cost)
     if event_type == "order":
         promotion_lift = 1.35 if moment.day in (1, 8, 18, 28) else 1.0
+        seeded_product_price = float(key.get("product_price") or average_order)
         gmv = round(max(
             9.9,
             rng.lognormvariate(
-                math.log(average_order * channel_order_value * promotion_lift),
-                0.48,
+                math.log(seeded_product_price * channel_order_value * promotion_lift),
+                0.32,
             ),
         ), 2)
         order_id = next_bigint_id(moment)
     ts = moment.isoformat(timespec="milliseconds")
-    return {
+    event = {
         "event_id": next_bigint_id(moment),
         "ts": ts,
         "advertiser_id": key["advertiser_id"],
         "campaign_id": key["campaign_id"],
         "product_id": key["product_id"],
+        "shop_id": key.get("shop_id"),
         "slot_id": (MEDIA.index(media) + 1) * 100 + rng.randint(1, 12),
         "unit_id": key["unit_id"],
         "creative_id": key["creative_id"],
@@ -325,26 +457,38 @@ def make_event(keys, event_time=None, rng=random):
         "bid_price": bid_price,
         "spend": spend,
         "gmv": gmv,
+        "product_price": product_price,
+        "product_num": product_num,
         "order_id": order_id,
     }
+    if event_type == "order":
+        set_order_amount(event, gmv, rng)
+    return event
 
 
 def choose_attribution_bucket(rng):
     return rng.choices(ATTRIBUTION_BUCKETS, weights=ATTRIBUTION_BUCKET_WEIGHTS, k=1)[0]
 
 
-def attach_attribution_journey(order_event, rng, bucket=None, stable_suffix=None):
+def attach_attribution_journey(
+        order_event, rng, bucket=None, stable_suffix=None, click_lag_seconds=None):
     """Make every order follow a controlled attribution path.
 
     Orders get a dedicated user so the intended touchpoint is not overridden by
     unrelated random clicks from the general traffic stream.
     """
-    bucket = bucket or choose_attribution_bucket(rng)
+    bucket = str(bucket or choose_attribution_bucket(rng)).upper()
     journey_key = stable_suffix or order_event["event_id"]
-    order_event["user_id"] = 30_000_000 + int(journey_key) % 10_000_000
-    click = make_attribution_click(order_event, rng, bucket=bucket)
+    order_event["user_id"] = 30_000_000 + deterministic_seed(
+        "attribution-user", journey_key
+    ) % 10_000_000
+    order_event["attribution_bucket"] = bucket
+    click = make_attribution_click(
+        order_event, rng, bucket=bucket, lag_seconds=click_lag_seconds
+    )
     if click:
         click["user_id"] = order_event["user_id"]
+        click["product_id"] = order_event["product_id"]
         order_event["traffic_type"] = "paid"
     else:
         order_event["traffic_type"] = "organic"
@@ -352,23 +496,29 @@ def attach_attribution_journey(order_event, rng, bucket=None, stable_suffix=None
     return click
 
 
-def make_attribution_click(order_event, rng, bucket=None):
+def make_attribution_click(order_event, rng, bucket=None, lag_seconds=None):
     """Create a reproducible last-click journey for a generated order.
 
     Buckets are deliberately generated across the full 30-day horizon so the
     attribution BI page is useful immediately after the historical backfill.
     A missing click represents an organic/direct-store order.
     """
-    bucket = bucket or choose_attribution_bucket(rng)
-    if bucket == "natural":
+    bucket = str(bucket or choose_attribution_bucket(rng)).upper()
+    if bucket in {"ORGANIC", "NATURAL"}:
         return None
 
     lag_ranges = {
-        # Keep demo touchpoints within the 5-second watermark tolerance while
-        # the Flink rule itself still accepts the complete 30-minute window.
-        "direct_30m": (1, 4),
+        "DIRECT": (1, 6 * 60 * 60 - 60),
+        "1D": (6 * 60 * 60 + 60, 24 * 60 * 60),
+        "7D": (24 * 60 * 60 + 60, 7 * 24 * 60 * 60),
+        "30D": (7 * 24 * 60 * 60 + 60, 30 * 24 * 60 * 60),
     }
-    lag_seconds = rng.randint(*lag_ranges[bucket])
+    if bucket not in lag_ranges:
+        raise ValueError(f"unsupported attribution bucket: {bucket}")
+    if lag_seconds is None:
+        lag_seconds = rng.randint(*lag_ranges[bucket])
+    elif not lag_ranges[bucket][0] <= lag_seconds <= lag_ranges[bucket][1]:
+        raise ValueError(f"lag {lag_seconds}s is outside the {bucket} bucket")
     click = dict(order_event)
     click["event_id"] = next_bigint_id(datetime.fromisoformat(order_event["ts"]))
     click["ts"] = (
@@ -383,19 +533,20 @@ def make_attribution_click(order_event, rng, bucket=None):
     )
     click["gmv"] = 0.0
     click["order_id"] = None
+    click["attribution_bucket"] = bucket
     return click
 
 
-def make_attribution_impression(click_event, rng):
+def make_attribution_impression(click_event, rng, event_id=None):
     """Create the impression immediately preceding an attributed click."""
     impression = dict(click_event)
-    impression["event_id"] = next_bigint_id(datetime.fromisoformat(click_event["ts"]))
+    impression["event_id"] = event_id or next_bigint_id(datetime.fromisoformat(click_event["ts"]))
     impression["ts"] = (
         datetime.fromisoformat(click_event["ts"]) - timedelta(seconds=rng.randint(2, 20))
     ).isoformat(timespec="milliseconds")
-    impression["event_type"] = "impression"
+    impression["event_type"] = "show"
     impression["spend"] = calculate_spend(
-        "impression",
+        "show",
         impression.get("billing_mode"),
         impression["bid_price"],
         MEDIA_PROFILES[impression["media"]][3],
@@ -403,11 +554,109 @@ def make_attribution_impression(click_event, rng):
     return impression
 
 
-def send_event(event):
-    """Append one SDK JSON log directly to the Fluss realtime ODS."""
-    if event["event_type"] == "order":
-        return
+BILL_INSERT_SQL = """
+INSERT INTO bill_info (
+    bill_id, advertiser_id, campaign_id, unit_id, creative_id, user_id,
+    slot_id, billing_type, media, commerce_channel, cost, bill_time, updated_at
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON DUPLICATE KEY UPDATE bill_id=VALUES(bill_id)
+"""
 
+ORDER_INSERT_SQL = """
+INSERT INTO order_info (
+    order_id, user_id, product_id, shop_id, product_price, product_num,
+    total_amount, payment_method, receiver_name, receiver_phone,
+    shipping_address, tracking_number, order_status, create_time, cancel_time,
+    pay_time, confirm_time, refund_time, updated_at
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON DUPLICATE KEY UPDATE order_id=VALUES(order_id)
+"""
+
+HISTORY_CHECKPOINT_DDL = """
+CREATE TABLE IF NOT EXISTS generator_history_checkpoint (
+    generator_node_id VARCHAR(128) NOT NULL,
+    business_date DATE NOT NULL,
+    generation_fingerprint CHAR(64) NOT NULL,
+    event_count INT NOT NULL,
+    completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (generator_node_id, business_date, generation_fingerprint)
+)
+"""
+
+
+def billing_type_code(event_type):
+    return {"show": 1, "click": 2, "convert": 3}[event_type]
+
+
+def bill_mysql_params(event):
+    return (
+        int(event["event_id"]),
+        int(event["advertiser_id"]),
+        int(event["campaign_id"]),
+        int(event["unit_id"]),
+        int(event["creative_id"]),
+        int(event["user_id"]),
+        int(event["slot_id"]),
+        billing_type_code(event["event_type"]),
+        str(event["media"]),
+        str(event["commerce_channel"]),
+        yuan_to_raw_units(event["spend"]),
+        mysql_timestamp(event["ts"]),
+        mysql_timestamp(event["ts"]),
+    )
+
+
+def order_mysql_params(event):
+    pay_time = mysql_timestamp(event["ts"])
+    order_id = int(event["order_id"])
+    create_time = pay_time - timedelta(minutes=5 + order_id % 26)
+    user_id = int(event["user_id"])
+    return (
+        order_id,
+        user_id,
+        int(event["product_id"]),
+        int(event["shop_id"]) if event.get("shop_id") is not None else None,
+        yuan_to_raw_units(event["product_price"]),
+        int(event["product_num"]),
+        yuan_to_raw_units(event["gmv"]),
+        1 + order_id % 2,
+        f"模拟用户{user_id % 10000:04d}",
+        f"138{user_id % 100000000:08d}",
+        "模拟地址（仅用于湖仓演示）",
+        None,
+        3,
+        create_time,
+        None,
+        pay_time,
+        None,
+        None,
+        pay_time,
+    )
+
+
+def persist_bill(event):
+    if event["event_type"] != billable_event_type(event["billing_mode"]):
+        return False
+    if yuan_to_raw_units(event.get("spend", 0)) <= 0:
+        return False
+    execute_mysql(
+        BILL_INSERT_SQL,
+        bill_mysql_params(event),
+        description=f"writing bill {event['event_id']}",
+    )
+    return True
+
+
+def persist_order(event):
+    execute_mysql(
+        ORDER_INSERT_SQL,
+        order_mysql_params(event),
+        description=f"writing order {event['order_id']}",
+    )
+
+
+def append_log_to_fluss(event):
+    """Append one non-order SDK JSON log to the Fluss realtime ODS."""
     event_ts = epoch_millis(event["ts"])
     sdk_log = {
         "bus_id": BUS_ID,
@@ -450,6 +699,30 @@ def send_event(event):
     FLUSS_LOOP.run_until_complete(wait_for_write(write))
 
 
+def send_log_with_reconnect(event):
+    while True:
+        ensure_fluss_connection()
+        try:
+            append_log_to_fluss(event)
+            return
+        except Exception as exc:
+            disconnect_fluss()
+            print(
+                f"{NODE_ID} reconnecting to Fluss after event {event['event_id']} failed: {exc}",
+                flush=True,
+            )
+            time.sleep(FLUSS_RETRY_SECONDS)
+
+
+def send_event(event):
+    """Publish a log or persist an order, then materialize its immutable MySQL fact."""
+    if event["event_type"] == "order":
+        persist_order(event)
+        return
+    send_log_with_reconnect(event)
+    persist_bill(event)
+
+
 def send_attribution_journey(click_event, rng):
     if click_event:
         send_event(make_attribution_impression(click_event, rng))
@@ -464,8 +737,10 @@ def make_live_attribution_order(keys, channel, sequence, rng):
     order["commerce_channel"] = channel
     order["traffic_type"] = "paid"
     order["spend"] = 0.0
-    order["gmv"] = round(rng.uniform(120.0, 1800.0), 2)
-    click = attach_attribution_journey(order, rng, bucket="direct_30m")
+    set_order_amount(order, rng.uniform(120.0, 1800.0), rng)
+    click = attach_attribution_journey(
+        order, rng, bucket="DIRECT", click_lag_seconds=rng.randint(1, 4)
+    )
     return order, click
 
 
@@ -479,7 +754,11 @@ def make_demo_attribution_order(keys, day, bucket, index, rng):
     order["event_type"] = "order"
     order["commerce_channel"] = COMMERCE_CHANNELS[index % 3]
     order["spend"] = 0.0
-    order["gmv"] = round(80.0 + index * 35.0 + stable_factor(str(stable_id), 0.0, 120.0), 2)
+    set_order_amount(
+        order,
+        80.0 + (index % 15) * 35.0 + stable_factor(str(stable_id), 0.0, 120.0),
+        rng,
+    )
     click = attach_attribution_journey(order, rng, bucket=bucket, stable_suffix=stable_id)
     if click:
         click["event_id"] = stable_id + 20_000_000_000_000
@@ -522,78 +801,151 @@ def historical_dates(now):
     return [(now - timedelta(days=days_ago)).date() for days_ago in range(HISTORY_DAYS, 0, -1)]
 
 
-def historical_moments(days, rng):
-    for day in days:
-        event_count = max(100, round(HISTORY_EVENTS_PER_DAY * daily_market_factor(day)))
-        moments = []
-        hour_weights = []
-        for hour in range(24):
-            sample = datetime(day.year, day.month, day.day, hour, 30, tzinfo=TZ)
-            hour_weights.append(traffic_intensity(sample))
-        for _ in range(event_count):
-            hour = rng.choices(range(24), weights=hour_weights, k=1)[0]
-            moments.append(datetime(
-                day.year, day.month, day.day, hour,
-                rng.randint(0, 59), rng.randint(0, 59), rng.randint(0, 999999), tzinfo=TZ,
-            ))
-        yield day, sorted(moments)
+def historical_moments_for_day(day, rng):
+    event_count = max(100, round(HISTORY_EVENTS_PER_DAY * daily_market_factor(day)))
+    hour_weights = []
+    for hour in range(24):
+        sample = datetime(day.year, day.month, day.day, hour, 30, tzinfo=TZ)
+        hour_weights.append(traffic_intensity(sample))
+    moments = []
+    for _ in range(event_count):
+        hour = rng.choices(range(24), weights=hour_weights, k=1)[0]
+        moments.append(datetime(
+            day.year, day.month, day.day, hour,
+            rng.randint(0, 59), rng.randint(0, 59), rng.randint(0, 999999), tzinfo=TZ,
+        ))
+    return sorted(moments)
+
+
+def history_generation_fingerprint():
+    material = {
+        "version": HISTORY_GENERATOR_VERSION,
+        "seed": RANDOM_SEED,
+        "node_number": NODE_NUMBER,
+        "events_per_day": HISTORY_EVENTS_PER_DAY,
+        "attribution_orders_per_day": ATTRIBUTION_DEMO_ORDERS_PER_DAY,
+        "attribution_buckets": ATTRIBUTION_BUCKETS,
+        "attribution_weights": ATTRIBUTION_BUCKET_WEIGHTS,
+    }
+    encoded = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def ensure_history_checkpoint_table():
+    execute_mysql(HISTORY_CHECKPOINT_DDL, description="creating history checkpoint table")
+
+
+def completed_history_dates(days, fingerprint):
+    if not days:
+        return set()
+    rows = execute_mysql(
+        """
+        SELECT business_date
+        FROM generator_history_checkpoint
+        WHERE generator_node_id=%s AND generation_fingerprint=%s
+        """,
+        (NODE_ID, fingerprint),
+        fetch="all",
+        description="loading history checkpoints",
+    )
+    wanted = {day.isoformat() for day in days}
+    return {
+        str(row["business_date"])
+        for row in rows
+        if str(row["business_date"]) in wanted
+    }
+
+
+def mark_history_date_complete(day, fingerprint, event_count):
+    execute_mysql(
+        """
+        INSERT IGNORE INTO generator_history_checkpoint (
+            generator_node_id, business_date, generation_fingerprint, event_count
+        ) VALUES (%s, %s, %s, %s)
+        """,
+        (NODE_ID, day, fingerprint, int(event_count)),
+        description=f"checkpointing historical date {day}",
+    )
+
+
+def build_history_day_events(keys, day):
+    """Build one stable business day independent of the surrounding date range."""
+    day_rng = random.Random(deterministic_seed(RANDOM_SEED, NODE_ID, day.isoformat()))
+    events = []
+    for moment in historical_moments_for_day(day, day_rng):
+        event = make_event(keys, event_time=moment, rng=day_rng)
+        if event["event_type"] == "order":
+            attribution_click = attach_attribution_journey(event, day_rng)
+            if attribution_click:
+                events.extend([
+                    make_attribution_impression(attribution_click, day_rng),
+                    attribution_click,
+                ])
+        events.append(event)
+
+    demo_buckets = attribution_demo_buckets(ATTRIBUTION_DEMO_ORDERS_PER_DAY)
+    day_rng.shuffle(demo_buckets)
+    for index, bucket in enumerate(demo_buckets):
+        order, click = make_demo_attribution_order(keys, day, bucket, index, day_rng)
+        if click:
+            stable_base = int(day.strftime("%Y%m%d")) * 1_000_000 + NODE_NUMBER * 100_000 + index
+            events.extend([
+                make_attribution_impression(
+                    click, day_rng, event_id=stable_base + 30_000_000_000_000
+                ),
+                click,
+            ])
+        events.append(order)
+    return events
 
 
 def produce_history(keys, rng):
-    total = 0
+    del rng  # Historical output is keyed by date, not by the live RNG cursor.
     virtual_now = datetime.now(TZ)
     days = historical_dates(virtual_now)
+    if not days:
+        return 0
 
-    demo_buckets = attribution_demo_buckets(ATTRIBUTION_DEMO_ORDERS)
-    rng.shuffle(demo_buckets)
-    demo_events_by_day = {day: [] for day in days}
-    for index, bucket in enumerate(demo_buckets):
-        day = days[index % len(days)] if days else (virtual_now - timedelta(days=1)).date()
-        order, click = make_demo_attribution_order(keys, day, bucket, index, rng)
-        if click:
-            demo_events_by_day.setdefault(day, []).extend([
-                make_attribution_impression(click, rng),
-                click,
-            ])
-        demo_events_by_day.setdefault(day, []).append(order)
+    ensure_history_checkpoint_table()
+    fingerprint = history_generation_fingerprint()
+    completed = completed_history_dates(days, fingerprint)
+    pending_days = [day for day in days if day.isoformat() not in completed]
+    if not pending_days:
+        print(f"{NODE_ID} historical backfill already complete; skipping", flush=True)
+        return 0
 
-    for day, moments in historical_moments(days, rng):
-        day_events = []
-        for moment in moments:
-            event = make_event(keys, event_time=moment, rng=rng)
-            if event["event_type"] == "order":
-                attribution_click = attach_attribution_journey(event, rng)
-                if attribution_click:
-                    day_events.extend([
-                        make_attribution_impression(attribution_click, rng),
-                        attribution_click,
-                    ])
-            day_events.append(event)
+    owned_events = []
+    day_counts = {}
+    for day in pending_days:
+        events = build_history_day_events(keys, day)
+        day_counts[day] = {
+            "total": len(events),
+            "logs": sum(event["event_type"] != "order" for event in events),
+            "orders": sum(event["event_type"] == "order" for event in events),
+        }
+        owned_events.extend((day, event) for event in events)
 
-        day_events.extend(demo_events_by_day.get(day, []))
-        day_events.sort(key=lambda item: item["ts"])
-        ad_log_count = 0
-        sdk_order_count = 0
-        for event in day_events:
-            if event["event_type"] == "order":
-                send_event(event)
-                sdk_order_count += 1
-            else:
-                send_event(event)
-                ad_log_count += 1
-        total += ad_log_count
+    # Long-lag attribution clicks must be replayed before their orders and before
+    # later event-time watermarks, even when they fall in a previous calendar day.
+    owned_events.sort(key=lambda item: (item[1]["ts"], int(item[1]["event_id"])))
+    for _, event in owned_events:
+        send_event(event)
+
+    for day in pending_days:
+        counts = day_counts[day]
+        mark_history_date_complete(day, fingerprint, counts["total"])
         print(
             f"{NODE_ID} historical day ready: date={day} "
-            f"ad_log_events={ad_log_count} sdk_order_events={sdk_order_count}",
+            f"ad_log_events={counts['logs']} order_events={counts['orders']}",
             flush=True,
         )
 
-    if demo_buckets:
-        print(
-            f"{NODE_ID} attribution demo cohort ready: orders={len(demo_buckets)}",
-            flush=True,
-        )
-    return total
+    print(
+        f"{NODE_ID} attribution demo cohort ready: "
+        f"orders={len(pending_days) * ATTRIBUTION_DEMO_ORDERS_PER_DAY}",
+        flush=True,
+    )
+    return len(owned_events)
 
 
 def make_fraud_burst(keys):
@@ -635,7 +987,7 @@ def make_fraud_burst(keys):
 
     impression_count = max(1, FRAUD_BURST_SIZE // 12)
     return (
-        [fraud_event("impression", index) for index in range(impression_count)]
+        [fraud_event("show", index) for index in range(impression_count)]
         + [fraud_event("click", index) for index in range(FRAUD_BURST_SIZE)]
     )
 
@@ -655,58 +1007,63 @@ def parse_args():
 def main():
     args = parse_args()
     interval = 1.0 / args.rate if args.rate else INTERVAL
-    live_started_at = time.monotonic()
     rng = random.Random(RANDOM_SEED + sum(ord(char) for char in NODE_ID))
     keys = []
     while not keys:
-        try:
-            keys = load_creatives()
-        except Exception as exc:
-            print(f"waiting for mysql seed data: {exc}", flush=True)
+        keys = load_creatives()
+        if not keys:
+            print("waiting for mysql seed data", flush=True)
             time.sleep(2)
-    while FLUSS_WRITER is None:
-        try:
-            connect_fluss()
-        except Exception as exc:
-            print(f"waiting for Fluss ODS table: {exc}", flush=True)
-            time.sleep(2)
+    ensure_fluss_connection()
     print(f"{NODE_ID} appending SDK JSON directly to Fluss {FLUSS_DATABASE}.{FLUSS_ODS_TABLE}", flush=True)
     historical_count = produce_history(keys, rng)
     if historical_count:
         print(f"{NODE_ID} historical backfill complete: events={historical_count}", flush=True)
+    live_started_at = time.monotonic()
     produced = 0
-    while True:
-        if args.duration is not None and time.monotonic() - live_started_at >= args.duration:
-            break
-        event = make_event(keys, rng=rng)
-        if event["event_type"] == "order":
-            attribution_click = attach_attribution_journey(event, rng)
-            send_attribution_journey(attribution_click, rng)
-            send_event(event)
-        else:
-            send_event(event)
-        produced += 1
+    try:
+        while True:
+            if args.duration is not None and time.monotonic() - live_started_at >= args.duration:
+                break
+            event = make_event(keys, rng=rng)
+            if event["event_type"] == "order":
+                live_bucket = rng.choices(["DIRECT", "ORGANIC"], weights=[80, 20], k=1)[0]
+                attribution_click = attach_attribution_journey(
+                    event,
+                    rng,
+                    bucket=live_bucket,
+                    click_lag_seconds=rng.randint(1, 4) if live_bucket == "DIRECT" else None,
+                )
+                send_attribution_journey(attribution_click, rng)
+                send_event(event)
+            else:
+                send_event(event)
+            produced += 1
 
-        if LIVE_ORDER_EVERY > 0 and produced % LIVE_ORDER_EVERY == 0:
-            channel_index = (produced // LIVE_ORDER_EVERY - 1) % len(COMMERCE_CHANNELS)
-            live_order, live_click = make_live_attribution_order(
-                keys, COMMERCE_CHANNELS[channel_index], produced // LIVE_ORDER_EVERY, rng
-            )
-            send_attribution_journey(live_click, rng)
-            send_event(live_order)
+            if LIVE_ORDER_EVERY > 0 and produced % LIVE_ORDER_EVERY == 0:
+                channel_index = (produced // LIVE_ORDER_EVERY - 1) % len(COMMERCE_CHANNELS)
+                live_order, live_click = make_live_attribution_order(
+                    keys, COMMERCE_CHANNELS[channel_index], produced // LIVE_ORDER_EVERY, rng
+                )
+                send_attribution_journey(live_click, rng)
+                send_event(live_order)
 
-        if FRAUD_INJECTION_ENABLED and FRAUD_BURST_EVERY > 0 and produced % FRAUD_BURST_EVERY == 0:
-            burst = make_fraud_burst(keys)
-            for fraud_event in burst:
-                send_event(fraud_event)
-            print(
-                f"{NODE_ID} injected fraud burst: events={len(burst)} every={FRAUD_BURST_EVERY} size={FRAUD_BURST_SIZE}",
-                flush=True,
-            )
+            if FRAUD_INJECTION_ENABLED and FRAUD_BURST_EVERY > 0 and produced % FRAUD_BURST_EVERY == 0:
+                burst = make_fraud_burst(keys)
+                for fraud_event in burst:
+                    send_event(fraud_event)
+                print(
+                    f"{NODE_ID} injected fraud burst: events={len(burst)} "
+                    f"every={FRAUD_BURST_EVERY} size={FRAUD_BURST_SIZE}",
+                    flush=True,
+                )
 
-        live_intensity = traffic_intensity(datetime.now(TZ))
-        jitter = rng.uniform(0.82, 1.18)
-        time.sleep(max(0.0001, interval / (live_intensity * jitter)))
+            live_intensity = traffic_intensity(datetime.now(TZ))
+            jitter = rng.uniform(0.82, 1.18)
+            time.sleep(max(0.0001, interval / (live_intensity * jitter)))
+    finally:
+        disconnect_fluss()
+        close_mysql_connection()
 
 
 if __name__ == "__main__":
